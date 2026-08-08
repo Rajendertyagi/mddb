@@ -1774,8 +1774,9 @@ jobs:
           $r = WebReq "POST" "$base/v1/add" $ab
           RecordF "Core CRUD & Stats" "Create document (v1/add)" "POST /v1/add" "200" "code=$($r.code) body=$($r.body)" ($r.code -eq 200)
 
-          $r = WebReq "GET" "$base/v1/get?collection=core&key=c1&lang=en" $null
-          RecordF "Core CRUD & Stats" "Read document (v1/get)" "GET /v1/get" "200 + c1" "code=$($r.code) body=$($r.body)" ($r.code -eq 200 -and $r.body -match "c1")
+          $gb = @{collection="core";key="c1";lang="en"} | ConvertTo-Json -Compress
+          $r = WebReq "POST" "$base/v1/get" $gb
+          RecordF "Core CRUD & Stats" "Read document (v1/get)" "POST /v1/get" "200 + c1" "code=$($r.code) body=$($r.body)" ($r.code -eq 200 -and $r.body -match "c1")
 
           $ub = @{collection="core";key="c1";lang="en";contentMd="updated content"} | ConvertTo-Json -Compress
           $r = WebReq "PATCH" "$base/v1/update" $ub
@@ -1790,9 +1791,8 @@ jobs:
           $r = WebReq "GET" "$base/v1/compliance-status" $null
           RecordF "Core CRUD & Stats" "Compliance status (v1/compliance-status)" "GET /v1/compliance-status" "200" "code=$($r.code)" ($r.code -eq 200)
 
-          $cb = @{collection="core";key="c1";lang="en"} | ConvertTo-Json -Compress
-          $r = WebReq "POST" "$base/v1/checksum" $cb
-          RecordF "Core CRUD & Stats" "Checksum (v1/checksum)" "POST /v1/checksum" "200/valid" "code=$($r.code) body=$($r.body)" (NoCrash $r.code $r.body)
+          $r = WebReq "GET" "$base/v1/checksum?collection=core" $null
+          RecordF "Core CRUD & Stats" "Checksum (v1/checksum)" "GET /v1/checksum" "200/valid" "code=$($r.code) body=$($r.body)" ($r.code -eq 200)
 
           $db = @{collection="core";key="c1";lang="en"} | ConvertTo-Json -Compress
           $r = WebReq "POST" "$base/v1/delete" $db
@@ -1857,15 +1857,17 @@ jobs:
           $r = WebReq "POST" "$base/v1/schema/set" $ssb
           RecordF "Schema & Collection Config" "Schema set (v1/schema/set)" "POST /v1/schema/set" "200" "code=$($r.code) body=$($r.body)" (NoCrash $r.code $r.body)
 
-          $r = WebReq "GET" "$base/v1/schema/get?collection=sch" $null
-          RecordF "Schema & Collection Config" "Schema get (v1/schema/get)" "GET /v1/schema/get" "200" "code=$($r.code) body=$($r.body)" (NoCrash $r.code $r.body)
+          $sgb = @{collection="sch"} | ConvertTo-Json -Compress
+          $r = WebReq "POST" "$base/v1/schema/get" $sgb
+          RecordF "Schema & Collection Config" "Schema get (v1/schema/get)" "POST /v1/schema/get" "200" "code=$($r.code) body=$($r.body)" ($r.code -eq 200)
 
-          $r = WebReq "GET" "$base/v1/schema/list" $null
-          RecordF "Schema & Collection Config" "Schema list (v1/schema/list)" "GET /v1/schema/list" "200" "code=$($r.code) body=$($r.body)" ($r.code -eq 200)
+          $slb = "{}"
+          $r = WebReq "POST" "$base/v1/schema/list" $slb
+          RecordF "Schema & Collection Config" "Schema list (v1/schema/list)" "POST /v1/schema/list" "200" "code=$($r.code) body=$($r.body)" ($r.code -eq 200)
 
           $ccb = @{collection="sch";config=@{}} | ConvertTo-Json -Compress
-          $r = WebReq "POST" "$base/v1/collection-config" $ccb
-          RecordF "Schema & Collection Config" "Collection config (v1/collection-config)" "POST /v1/collection-config" "200" "code=$($r.code) body=$($r.body)" (NoCrash $r.code $r.body)
+          $r = WebReq "PUT" "$base/v1/collection-config" $ccb
+          RecordF "Schema & Collection Config" "Collection config (v1/collection-config)" "PUT /v1/collection-config" "200" "code=$($r.code) body=$($r.body)" ($r.code -eq 200)
 
           $vb = @{collection="sch";doc=@{title="hello"}} | ConvertTo-Json -Compress
           $r = WebReq "POST" "$base/v1/validate" $vb
@@ -1996,8 +1998,9 @@ jobs:
           WebReq "POST" "$base/v1/add" $ab | Out-Null
           $ub = @{collection="rev";key="r1";lang="en";contentMd="revision two"} | ConvertTo-Json -Compress
           WebReq "PATCH" "$base/v1/update" $ub | Out-Null
-          $r = WebReq "GET" "$base/v1/revisions?collection=rev&key=r1&lang=en" $null
-          RecordF "Document Revisions" "List revisions (v1/revisions)" "GET /v1/revisions" "200 + list" "code=$($r.code) body=$($r.body)" (NoCrash $r.code $r.body)
+          $revb = @{collection="rev";key="r1";lang="en"} | ConvertTo-Json -Compress
+          $r = WebReq "POST" "$base/v1/revisions" $revb
+          RecordF "Document Revisions" "List revisions (v1/revisions)" "POST /v1/revisions" "200 + list" "code=$($r.code) body=$($r.body)" ($r.code -eq 200)
 
           # ===== Embedding Config =====
           $r = WebReq "GET" "$base/v1/embedding-configs" $null

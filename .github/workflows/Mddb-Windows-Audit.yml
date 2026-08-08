@@ -1812,12 +1812,12 @@ jobs:
           $r = WebReq "GET" "$base/v1/fts-languages" $null
           RecordF "Full-Text Search" "FTS languages (v1/fts-languages)" "GET /v1/fts-languages" "200" "code=$($r.code)" ($r.code -eq 200)
 
-          $r = WebReq "GET" "$base/v1/autocomplete?q=bro" $null
-          RecordF "Full-Text Search" "Autocomplete (v1/autocomplete)" "GET /v1/autocomplete?q=bro" "200" "code=$($r.code)" (NoCrash $r.code $r.body)
+          $r = WebReq "GET" "$base/v1/autocomplete?collection=fts&q=bro" $null
+          RecordF "Full-Text Search" "Autocomplete (v1/autocomplete)" "GET /v1/autocomplete?collection=fts&q=bro" "200" "code=$($r.code) body=$($r.body)" ($r.code -eq 200)
 
-          $csb = @{query="fox"} | ConvertTo-Json -Compress
+          $csb = @{targetCollections=@("fts"); queryVector=@(0.1, 0.2, 0.3, 0.4)} | ConvertTo-Json -Compress
           $r = WebReq "POST" "$base/v1/cross-search" $csb
-          RecordF "Full-Text Search" "Cross-search (v1/cross-search)" "POST /v1/cross-search" "200" "code=$($r.code) body=$($r.body)" (NoCrash $r.code $r.body)
+          RecordF "Full-Text Search" "Cross-search (v1/cross-search)" "POST /v1/cross-search (no provider: 200 or 503)" "200/503" "code=$($r.code) body=$($r.body)" ($r.code -eq 200 -or $r.code -eq 503)
 
           # ===== Geo Search =====
           $geb = @{lat=40.7128; lon=-74.0060} | ConvertTo-Json -Compress
@@ -1828,9 +1828,9 @@ jobs:
           $r = WebReq "POST" "$base/v1/geo-decode" $gdb
           RecordF "Geo Search" "Geo decode (v1/geo-decode)" "POST /v1/geo-decode" "200/400" "code=$($r.code) body=$($r.body)" (NoCrash $r.code $r.body)
 
-          $gsb = @{collection="geo";lat=40.7128; lon=-74.0060; radiusKm=10} | ConvertTo-Json -Compress
+          $gsb = @{collection="geo";lat=40.7128;lng=-74.0060;radiusMeters=10000} | ConvertTo-Json -Compress
           $r = WebReq "POST" "$base/v1/geo-search" $gsb
-          RecordF "Geo Search" "Geo search (v1/geo-search)" "POST /v1/geo-search" "200" "code=$($r.code) body=$($r.body)" (NoCrash $r.code $r.body)
+          RecordF "Geo Search" "Geo search (v1/geo-search)" "POST /v1/geo-search (index ready: 200/503)" "200/503" "code=$($r.code) body=$($r.body)" ($r.code -eq 200 -or $r.code -eq 503)
 
           $r = WebReq "GET" "$base/v1/geo-stats" $null
           RecordF "Geo Search" "Geo stats (v1/geo-stats)" "GET /v1/geo-stats" "200" "code=$($r.code)" ($r.code -eq 200)
@@ -1844,18 +1844,18 @@ jobs:
           $r = WebReq "POST" "$base/v1/aggregate" $agb
           RecordF "Aggregation & Curation" "Aggregate (v1/aggregate)" "POST /v1/aggregate" "200" "code=$($r.code) body=$($r.body)" (NoCrash $r.code $r.body)
 
-          $cub = @{collection="agg";key="a1"} | ConvertTo-Json -Compress
+          $cub = @{collection="agg";query="doc one"} | ConvertTo-Json -Compress
           $r = WebReq "POST" "$base/v1/curation" $cub
-          RecordF "Aggregation & Curation" "Curation (v1/curation)" "POST /v1/curation" "200" "code=$($r.code) body=$($r.body)" (NoCrash $r.code $r.body)
+          RecordF "Aggregation & Curation" "Curation (v1/curation)" "POST /v1/curation" "200" "code=$($r.code) body=$($r.body)" ($r.code -eq 200)
 
           $fdb = @{collection="agg"} | ConvertTo-Json -Compress
           $r = WebReq "POST" "$base/v1/find-duplicates" $fdb
           RecordF "Aggregation & Curation" "Find duplicates (v1/find-duplicates)" "POST /v1/find-duplicates" "200" "code=$($r.code) body=$($r.body)" (NoCrash $r.code $r.body)
 
           # ===== Schema & Collection Config =====
-          $ssb = @{collection="sch";fields=@(@{name="title";type="text"})} | ConvertTo-Json -Compress
+          $ssb = @{collection="sch"; schema='{"type":"object","properties":{"title":{"type":"string"}}}'} | ConvertTo-Json -Compress
           $r = WebReq "POST" "$base/v1/schema/set" $ssb
-          RecordF "Schema & Collection Config" "Schema set (v1/schema/set)" "POST /v1/schema/set" "200" "code=$($r.code) body=$($r.body)" (NoCrash $r.code $r.body)
+          RecordF "Schema & Collection Config" "Schema set (v1/schema/set)" "POST /v1/schema/set" "200" "code=$($r.code) body=$($r.body)" ($r.code -eq 200)
 
           $sgb = @{collection="sch"} | ConvertTo-Json -Compress
           $r = WebReq "POST" "$base/v1/schema/get" $sgb
@@ -1969,9 +1969,9 @@ jobs:
           # ===== Webhooks =====
           $r = WebReq "GET" "$base/v1/webhooks" $null
           RecordF "Webhooks" "List webhooks (v1/webhooks)" "GET /v1/webhooks" "200 + list" "code=$($r.code) body=$($r.body)" ($r.code -eq 200)
-          $whb = @{url="https://example.com/hook"; events=@("create")} | ConvertTo-Json -Compress
+          $whb = @{url="https://example.com/hook"; events=@("doc.added")} | ConvertTo-Json -Compress
           $r = WebReq "POST" "$base/v1/webhooks" $whb
-          RecordF "Webhooks" "Register webhook (v1/webhooks)" "POST /v1/webhooks" "200/accepted" "code=$($r.code) body=$($r.body)" (NoCrash $r.code $r.body)
+          RecordF "Webhooks" "Register webhook (v1/webhooks)" "POST /v1/webhooks" "200" "code=$($r.code) body=$($r.body)" ($r.code -eq 200)
 
           # ===== Audit Log =====
           $r = WebReq "GET" "$base/v1/audit" $null

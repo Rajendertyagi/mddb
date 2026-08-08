@@ -1,0 +1,116 @@
+From deea49bfa9e5b51bfbfe60d97ac5bc03ae141624 Mon Sep 17 00:00:00 2001
+From: Rajendertyagi <86180775+Rajendertyagi@users.noreply.github.com>
+Date: Sun, 9 Aug 2026 01:41:09 +0530
+Subject: [PATCH] fix(http): atomic snapshot+rollback for Restore
+ (SEC-OPEN-1/SEC-OPEN-2)
+
+handleRestore replaced the live DB file in place with no safety
+snapshot and no rollback on a corrupt or incompatible backup, so a
+failed restore destroyed the live database (SEC-OPEN-1 non-atomic
+replace, SEC-OPEN-2 no rollback on corrupt target). Both gaps are the
+same root defect: the live file was overwritten unconditionally.
+
+Take a safety snapshot of the live DB before swapping, perform the
+close->copy->open under withRestoreLock, validate the restored DB opens
+with bolt.Open, and roll back to the snapshot if copy or open fails.
+Remove the snapshot only after a successful, validated swap.
+
+Closes SEC-OPEN-1 and SEC-OPEN-2.
+---
+ services/mddbd/http_handlers.go | 60 ++++++++++++++++++++++++++++-----
+ 1 file changed, 52 insertions(+), 8 deletions(-)
+
+diff --git a/services/mddbd/http_handlers.go b/services/mddbd/http_handlers.go
+index 1cc8342..6dd1f0f 100644
+--- a/services/mddbd/http_handlers.go
++++ b/services/mddbd/http_handlers.go
+@@ -13,7 +13,9 @@ import (
+ 	"mddb/internal/storage"
+ 	"mddb/internal/temporal"
+ 	"net/http"
++	"os"
+ 	"sort"
++	"strconv"
+ 	"time"
+ 
+ 	json "github.com/goccy/go-json"
+@@ -359,19 +361,50 @@ func (s *Server) handleRestore(w http.ResponseWriter, r *http.Request) {
+ 		return
+ 	}
+ 
+-	// zamknij db, podmień plik, otwórz ponownie
+-	_ = s.DB.Close()
+-	if err := copyFile(safeFrom, s.Path); err != nil {
++	// Take a safety snapshot of the live database BEFORE replacing it, so a
++	// corrupt or incompatible backup can never destroy the current data
++	// (SEC-OPEN-1 non-atomic replace / SEC-OPEN-2 no-rollback).
++	snapshot := s.Path + ".restore-bak-" + strconv.FormatInt(time.Now().UnixNano(), 10)
++	if err := s.withRestoreLock(func() error {
++		// Close the live DB (required on Windows, where an open file cannot be
++		// removed/renamed) and snapshot it while it is safely closed.
++		if err := s.DB.Close(); err != nil {
++			return fmt.Errorf("close live db: %w", err)
++		}
++		if err := copyFile(s.Path, snapshot); err != nil {
++			// Restore the original so the server stays usable, then fail.
++			if db, oerr := bolt.Open(s.Path, 0600, getOptimizedBoltOptions()); oerr == nil {
++				s.DB = db
++			}
++			return fmt.Errorf("snapshot live db: %w", err)
++		}
++
++		// Swap in the backup.
++		if err := copyFile(safeFrom, s.Path); err != nil {
++			rollbackRestore(s, snapshot)
++			return fmt.Errorf("copy backup: %w", err)
++		}
++
++		// Validate the restored database opens before committing to it.
++		db, oerr := bolt.Open(s.Path, 0600, getOptimizedBoltOptions())
++		if oerr != nil {
++			rollbackRestore(s, snapshot)
++			return fmt.Errorf("open restored db: %w", oerr)
++		}
++		s.DB = db
++		return nil
++	}); err != nil {
++		// The live database has been restored from the snapshot by
++		// rollbackRestore; keep the snapshot for manual recovery.
++		log.Printf("WARNING: restore failed, live database rolled back from snapshot %s: %v", snapshot, err)
+ 		bad(w, err)
+ 		return
+ 	}
+ 
+-	db, err := bolt.Open(s.Path, 0600, getOptimizedBoltOptions())
+-	if err != nil {
+-		bad(w, err)
+-		return
++	// Swap succeeded and the new database is valid — discard the safety snapshot.
++	if err := os.Remove(snapshot); err != nil {
++		log.Printf("WARNING: failed to remove restore snapshot %s: %v", snapshot, err)
+ 	}
+-	s.DB = db
+ 
+ 	// Reset binlog after restore — forces followers to re-snapshot
+ 	if s.Binlog != nil {
+@@ -383,6 +416,17 @@ func (s *Server) handleRestore(w http.ResponseWriter, r *http.Request) {
+ 	ok(w, map[string]string{"restored": body.From})
+ }
+ 
++// rollbackRestore restores the live database from the safety snapshot taken
++// before a restore, reopening it so the server remains usable. It is only
++// called when the new backup failed to copy or open.
++func rollbackRestore(s *Server, snapshot string) {
++	_ = copyFile(snapshot, s.Path)
++	if db, oerr := bolt.Open(s.Path, 0600, getOptimizedBoltOptions()); oerr == nil {
++		_ = s.DB.Close()
++		s.DB = db
++	}
++}
++
+ func (s *Server) handleTruncate(w http.ResponseWriter, r *http.Request) {
+ 	var req TruncateRequest
+ 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+-- 
+2.55.0.windows.3
+

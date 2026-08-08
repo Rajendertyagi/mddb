@@ -3,7 +3,7 @@
 Ordered vendor patch series for the MDDB Windows port.
 
 **Upstream baseline:** `dbc9def` — "Add GitHub Actions workflow for MDDB Panel build"
-**Total patches:** 18
+**Total patches:** 19
 **Last updated:** 2026-08-08
 
 ---
@@ -264,3 +264,16 @@ Ordered vendor patch series for the MDDB Windows port.
   - `services/mddbd/internal/indexqueue/indexqueue_test.go` (modified)
 - **Purpose:** `TestIndexQueue_ProcessJob_DeleteOldMeta` asserted old/new meta-index keys after a single fixed `time.Sleep(100ms)`. The async index writer swaps the meta key asynchronously, so on slow Windows CI the swap could land after the sleep, failing "old meta index should be deleted" / "new meta index should exist". Replace with a poll loop (up to 5s) that reads the BoltDB `idxmeta` bucket directly until the old key is gone and the new key is present. No production/behavior change.
 - **Dependencies:** 0011 (waitFor + async-worker test pattern).
+
+---
+
+## 0019 — HTTP: atomic snapshot+rollback for Restore (SEC-OPEN-1/SEC-OPEN-2)
+
+- **Commit:** `deea49b`
+- **Type:** Windows-only (security hardening of the HTTP restore path)
+- **Upstreamable:** No (hardening of the Windows port restore path; the underlying gaps apply on all platforms but ship as a vendor patch)
+- **Status:** Applied
+- **Files:**
+  - `services/mddbd/http_handlers.go` (modified)
+- **Purpose:** `Server.handleRestore` replaced the live DB file in place with no safety snapshot and no rollback on a corrupt or incompatible backup, so a failed restore destroyed the live database (SEC-OPEN-1: non-atomic replace of the live DB file; SEC-OPEN-2: no rollback when the target is corrupt). Both are the same root defect — the live file was overwritten unconditionally. Take a safety snapshot of the live DB before swapping, perform the close→copy→open under `Server.withRestoreLock` (exclusive `restoreMu`), validate the restored DB opens with `bolt.Open`, and roll back to the snapshot if copy or open fails. Remove the snapshot only after a successful, validated swap. This is the HTTP-handler counterpart to the gRPC `Restore` hardening in 0009.
+- **Dependencies:** 0004 (`replaceFile`/`copyFile`); uses `Server.withRestoreLock` / `restoreMu` (server_restore.go); mirrors 0009.

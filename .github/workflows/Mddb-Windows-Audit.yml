@@ -1803,11 +1803,11 @@ jobs:
           WebReq "POST" "$base/v1/add" $ab | Out-Null
           $sb = @{collection="fts";query="fox"} | ConvertTo-Json -Compress
           $r = WebReq "POST" "$base/v1/search" $sb
-          RecordF "Full-Text Search" "Full-text search (v1/search)" "POST /v1/search q=fox" "200 + results" "code=$($r.code) body=$($r.body)" (NoCrash $r.code $r.body)
+          RecordF "Full-Text Search" "Full-text search (v1/search)" "POST /v1/search q=fox" "200 + results" "code=$($r.code) body=$($r.body)" ($r.code -eq 200)
 
           $fb = @{collection="fts";query="brown"} | ConvertTo-Json -Compress
           $r = WebReq "POST" "$base/v1/fts" $fb
-          RecordF "Full-Text Search" "FTS endpoint (v1/fts)" "POST /v1/fts q=brown" "200" "code=$($r.code) body=$($r.body)" (NoCrash $r.code $r.body)
+          RecordF "Full-Text Search" "FTS endpoint (v1/fts)" "POST /v1/fts q=brown" "200" "code=$($r.code) body=$($r.body)" ($r.code -eq 200)
 
           $r = WebReq "GET" "$base/v1/fts-languages" $null
           RecordF "Full-Text Search" "FTS languages (v1/fts-languages)" "GET /v1/fts-languages" "200" "code=$($r.code)" ($r.code -eq 200)
@@ -1822,7 +1822,7 @@ jobs:
           # ===== Geo Search =====
           $geb = @{lat=40.7128; lon=-74.0060} | ConvertTo-Json -Compress
           $r = WebReq "POST" "$base/v1/geo-encode" $geb
-          RecordF "Geo Search" "Geo encode (v1/geo-encode)" "POST /v1/geo-encode" "200 + hash" "code=$($r.code) body=$($r.body)" (NoCrash $r.code $r.body)
+          RecordF "Geo Search" "Geo encode (v1/geo-encode)" "POST /v1/geo-encode" "200 + hash" "code=$($r.code) body=$($r.body)" ($r.code -eq 200)
 
           $gdb = @{hash="9q8yyk8y"} | ConvertTo-Json -Compress
           $r = WebReq "POST" "$base/v1/geo-decode" $gdb
@@ -1842,7 +1842,7 @@ jobs:
           WebReq "POST" "$base/v1/add" $ab | Out-Null
           $agb = @{collection="agg"} | ConvertTo-Json -Compress
           $r = WebReq "POST" "$base/v1/aggregate" $agb
-          RecordF "Aggregation & Curation" "Aggregate (v1/aggregate)" "POST /v1/aggregate" "200" "code=$($r.code) body=$($r.body)" (NoCrash $r.code $r.body)
+          RecordF "Aggregation & Curation" "Aggregate (v1/aggregate)" "POST /v1/aggregate" "200" "code=$($r.code) body=$($r.body)" ($r.code -eq 200)
 
           $cub = @{collection="agg";query="doc one"} | ConvertTo-Json -Compress
           $r = WebReq "POST" "$base/v1/curation" $cub
@@ -1850,7 +1850,7 @@ jobs:
 
           $fdb = @{collection="agg"} | ConvertTo-Json -Compress
           $r = WebReq "POST" "$base/v1/find-duplicates" $fdb
-          RecordF "Aggregation & Curation" "Find duplicates (v1/find-duplicates)" "POST /v1/find-duplicates" "200" "code=$($r.code) body=$($r.body)" (NoCrash $r.code $r.body)
+          RecordF "Aggregation & Curation" "Find duplicates (v1/find-duplicates)" "POST /v1/find-duplicates" "200" "code=$($r.code) body=$($r.body)" ($r.code -eq 200)
 
           # ===== Schema & Collection Config =====
           $ssb = @{collection="sch"; schema='{"type":"object","properties":{"title":{"type":"string"}}}'} | ConvertTo-Json -Compress
@@ -1871,7 +1871,7 @@ jobs:
 
           $vb = @{collection="sch";doc=@{title="hello"}} | ConvertTo-Json -Compress
           $r = WebReq "POST" "$base/v1/validate" $vb
-          RecordF "Schema & Collection Config" "Validate (v1/validate)" "POST /v1/validate" "200" "code=$($r.code) body=$($r.body)" (NoCrash $r.code $r.body)
+          RecordF "Schema & Collection Config" "Validate (v1/validate)" "POST /v1/validate" "200" "code=$($r.code) body=$($r.body)" ($r.code -eq 200)
           # ---- emit evidence ----
           function Emit($Feature,$Summary) {
             $ts = $script:byFeat[$Feature]
@@ -1977,7 +1977,7 @@ jobs:
           $r = WebReq "GET" "$base/v1/audit" $null
           RecordF "Audit Log" "Audit list (v1/audit)" "GET /v1/audit" "200 + list" "code=$($r.code) body=$($r.body)" ($r.code -eq 200)
           $r = WebReq "GET" "$base/v1/audit/exporters" $null
-          RecordF "Audit Log" "Audit exporters (v1/audit/exporters)" "GET /v1/audit/exporters" "200" "code=$($r.code) body=$($r.body)" (NoCrash $r.code $r.body)
+          RecordF "Audit Log" "Audit exporters (v1/audit/exporters)" "GET /v1/audit/exporters" "200" "code=$($r.code) body=$($r.body)" ($r.code -eq 200)
 
           # ===== System & Config =====
           $r = WebReq "GET" "$base/v1/system/info" $null

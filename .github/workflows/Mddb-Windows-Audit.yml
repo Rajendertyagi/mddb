@@ -2131,7 +2131,24 @@ jobs:
           lines.append(f"| Backup/Restore | {bak} |")
           lines.append("")
           # Known open bugs (from static source analysis + live evidence)
-          bugs = []  # SEC-OPEN-1/2 resolved by patch 0019 (atomic snapshot+rollback on Restore)
+          bugs = [
+            {
+              "id": "SEC-OPEN-1",
+              "title": "Non-atomic file replace on Windows (remove-then-rename)",
+              "severity": "Medium",
+              "repro": "replacefile_windows.go replaceFile() does os.Remove then os.Rename; a crash between the two loses the destination file. Reachable via replication snapshot apply (replication_client.go:321) and the generic write helper (util.go:98).",
+              "evidence": "Static inspection of replacefile_windows.go (post-0018+0019+0020). Patch 0019 added snapshot+rollback in HTTP handleRestore only; it did NOT change replaceFile, and gRPC/util/replication still call the non-atomic primitive.",
+              "recommended_fix": "Use MoveFileEx(MOVEFILE_REPLACE_EXISTING) for an atomic in-place replace, or snapshot+rollback at every call site."
+            },
+            {
+              "id": "SEC-OPEN-2",
+              "title": "gRPC restore has no rollback on reopen failure",
+              "severity": "Medium",
+              "repro": "grpc_server.go Restore() closes the live DB (line 498), copies the backup over the live path (line 501), then bolt.Open (line 505); on reopen failure (line 507) it returns an error while g.server.DB still points at the closed handle and the live file is already the backup.",
+              "evidence": "Static inspection of grpc_server.go Restore() (post-0018+0019+0020). Patch 0019's snapshot+rollback lives only in http_handlers.go handleRestore; the gRPC path was not touched and has no snapshot/rollbackRestore.",
+              "recommended_fix": "Snapshot the live DB before close, and call rollbackRestore(snapshot) on copy OR reopen failure (mirror http_handlers.go)."
+            }
+          ]
           lines.append("## Known bugs (do not fix in this task)")
           lines.append("")
           for b in bugs:
@@ -2142,8 +2159,6 @@ jobs:
               lines.append("")
           lines.append("## Resolved (historical)")
           lines.append("- Audit key collision (Windows clock) - fixed in patch 0008.")
-          lines.append("- SEC-OPEN-1 (non-atomic file replace on Windows) - resolved by patch 0019 atomic snapshot+rollback on Restore. CONFIRM replacefile_windows.go no longer does os.Remove then os.Rename.")
-          lines.append("- SEC-OPEN-2 (restore had no rollback on reopen failure) - resolved by patch 0019 atomic snapshot+rollback on Restore. CONFIRM gRPC restore path also rolls back on reopen failure.")
           lines.append("")
           # score: only count PASS as strong; BLOCKED/FAIL lower it
           score = 0

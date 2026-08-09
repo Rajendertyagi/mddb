@@ -3,7 +3,7 @@
 Ordered vendor patch series for the MDDB Windows port.
 
 **Upstream baseline:** `dbc9def` — "Add GitHub Actions workflow for MDDB Panel build"
-**Total patches:** 21
+**Total patches:** 22
 **Last updated:** 2026-08-09
 
 ---
@@ -305,3 +305,16 @@ Ordered vendor patch series for the MDDB Windows port.
   - `services/mddbd/grpc_server.go` (modified)
 - **Purpose:** Close the two security gaps that patch 0019 only partially addressed. SEC-OPEN-1: `replaceFile` on Windows no longer does `os.Remove(dst)` before `os.Rename`; Go's `os.Rename` on Windows already uses `MoveFileEx(MOVEFILE_REPLACE_EXISTING)` (an atomic in-place replace), so the prior `remove` only widened the crash window. All callers (replication snapshot apply, the generic write helper) are now atomic. SEC-OPEN-2: gRPC `Restore` now takes a safety snapshot of the live DB before closing and calls `rollbackRestore(server, snapshot)` on BOTH copy-failure and reopen-failure branches (mirroring `Server.handleRestore` from 0019), so a failed restore rolls back instead of leaving the server with a closed handle and a lost database.
 - **Dependencies:** 0019 (`Server.handleRestore` snapshot+rollback pattern, `rollbackRestore`); `replaceFile`/`copyFile` primitives.
+
+---
+
+## 0022 — gRPC Restore: keep live DB closed until backup copy (SEC-OPEN-2 regression fix)
+
+- **Commit:** `c8460a7`
+- **Type:** Windows-only (correctness regression introduced by 0021 on the gRPC restore path)
+- **Upstreamable:** No (fixes a Windows port sequencing bug; the snapshot+rollback intent from 0021 stands)
+- **Status:** Applied
+- **Files:**
+  - `services/mddbd/grpc_server.go` (modified)
+- **Purpose:** Patch 0021 added a safety snapshot + rollback to gRPC `Restore`, but it also reopened the live DB (a `bolt.Open` + `g.server.DB` reassignment) *between* taking the snapshot and copying the backup over the live path. On Windows you cannot rename/copy over a file that is still open, so `copy backup: rename ... test.db: Access is denied` and `TestGRPCRestore_Success` failed (CI run `31294191137`, the "Run server unit tests" step). This patch removes that premature reopen; the live DB now stays closed from the initial `Close()` until the backup copy succeeds, then reopens once — mirroring `Server.handleRestore` (0019) and the original close→copy→reopen contract. The snapshot+rollback safety behavior from 0021 is preserved.
+- **Dependencies:** 0021 (corrects a regression it introduced on the gRPC path); 0019 (`rollbackRestore` pattern).

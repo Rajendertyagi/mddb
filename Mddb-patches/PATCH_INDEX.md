@@ -3,7 +3,7 @@
 Searchable index of the vendor patch series.
 
 **Upstream baseline:** `dbc9def`
-**Total patches:** 21
+**Total patches:** 22
 **Last updated:** 2026-08-09
 
 ## By Patch Number
@@ -31,6 +31,7 @@ Searchable index of the vendor patch series.
 | 0019 | `deea49b` | HTTP: atomic snapshot+rollback for Restore (SEC-OPEN-1/SEC-OPEN-2) | storage / security / HTTP | No |
 | 0020 | `0ca19ea` | Embedding: deterministic offline provider (unblocks Vector on Windows CI) | embedding / vector / CI | No |
 | 0021 | `1e66ea1` | Security: atomic Windows replace + gRPC restore rollback (SEC-OPEN-1/SEC-OPEN-2) | security / windows / restore | No |
+| 0022 | `c8460a7` | gRPC Restore: keep live DB closed until backup copy (0021 regression fix) | gRPC / storage / windows | No |
 
 ## By Subsystem
 
@@ -49,10 +50,12 @@ Searchable index of the vendor patch series.
 - 0019 `deea49b` — HTTP: atomic snapshot+rollback for Restore (SEC-OPEN-1/SEC-OPEN-2)
 - 0020 `0ca19ea` — Embedding: deterministic offline provider (unblocks Vector on Windows CI)
 - 0021 `1e66ea1` — Security: atomic Windows replace + gRPC restore rollback (SEC-OPEN-1/SEC-OPEN-2)
+- 0022 `c8460a7` — gRPC Restore: keep live DB closed until backup copy (fixes 0021 regression)
 
 ### gRPC
 - 0009 `1dadef4` — gRPC: close+swap+reopen DB during Restore
 - 0010 `841cf1b` — gRPC-test: close live s.DB in cleanup
+- 0022 `c8460a7` — gRPC Restore: keep live DB closed until backup copy (0021 regression fix)
 
 ### Tests
 - 0004 `cdb703c` — Runtime + tests compatibility (test-side fixes)
@@ -74,7 +77,7 @@ Searchable index of the vendor patch series.
 ## By Type
 
 ### Windows-only (not upstreamable)
-- 0001, 0002, 0003, 0004, 0009, 0010, 0014, 0019, 0020, 0021
+- 0001, 0002, 0003, 0004, 0009, 0010, 0014, 0019, 0020, 0021, 0022
 
 ### Cross-platform correctness (upstreamable)
 - 0005, 0006, 0007, 0008, 0011, 0012, 0013, 0015, 0016, 0017, 0018

@@ -1,0 +1,35 @@
+From c8460a7f9e92571fd23bcb1eb29a0f234a324df1 Mon Sep 17 00:00:00 2001
+From: Rajendertyagi <86180775+Rajendertyagi@users.noreply.github.com>
+Date: Sun, 9 Aug 2026 09:59:58 +0530
+Subject: [PATCH] fix(grpc restore): keep live DB closed until backup copy
+ completes (SEC-OPEN-2 regression)
+
+---
+ services/mddbd/grpc_server.go | 11 +++++------
+ 1 file changed, 5 insertions(+), 6 deletions(-)
+
+diff --git a/services/mddbd/grpc_server.go b/services/mddbd/grpc_server.go
+index 25d09e6..692a511 100644
+--- a/services/mddbd/grpc_server.go
++++ b/services/mddbd/grpc_server.go
+@@ -508,12 +508,11 @@ func (g *GRPCServer) Restore(ctx context.Context, req *proto.RestoreRequest) (*p
+ 			}
+ 			return fmt.Errorf("snapshot live db: %w", err)
+ 		}
+-		if db, oerr := bolt.Open(g.server.Path, 0600, getOptimizedBoltOptions()); oerr != nil {
+-			return fmt.Errorf("reopen live db after snapshot: %w", oerr)
+-		} else {
+-			g.server.DB = db
+-		}
+-
++		// NOTE: do NOT reopen the live DB here. The on-disk file must stay
++		// closed until the backup copy below completes, otherwise Windows
++		// rejects the in-place replace ("Access is denied"). The DB is reopened
++		// once, after a successful copy, further down. This mirrors
++		// http_handlers.go handleRestore (SEC-OPEN-2, regression fix for 0021).
+ 		if err := copyFile(safeFrom, g.server.Path); err != nil {
+ 			rollbackRestore(g.server, snapshot)
+ 			return fmt.Errorf("copy backup: %w", err)
+-- 
+2.55.0.windows.3
+

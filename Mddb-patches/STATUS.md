@@ -18,8 +18,8 @@ Current status of the MDDB Windows port.
 
 | Item | Value |
 |------|-------|
-| Total vendor patches | 21 |
-| Patch range | `0001` – `0021` |
+| Total vendor patches | 22 |
+| Patch range | `0001` – `0022` |
 | Series complete (reproduces `main` from baseline) | Yes — verified `git diff` empty, `git diff-tree -r` exit 0 |
 
 ## Windows Build Status
@@ -28,12 +28,13 @@ Current status of the MDDB Windows port.
 |--------|--------|
 | `mddbd.exe` cross-compile (Linux → Windows, `CGO_ENABLED=0`) | Passing |
 | `mddb-cli.exe` cross-compile (Linux → Windows, `CGO_ENABLED=0`) | Passing |
-| Native `go test ./...` on `windows-latest` | Passing (root `mddb` + all subpackages green) |
+| Native `go test ./...` on `windows-latest` | Was broken by 0021 (gRPC `Restore` reopened the live DB before the backup copy → `TestGRPCRestore_Success` failed with "Access is denied"); fixed by 0022. Re-dispatch the Windows audit to confirm all jobs green. |
 
 ## Known Issues
 
-- **SEC-OPEN-1 / SEC-OPEN-2 — CLOSED by patch 0021.** (HTTP `handleRestore` snapshot+rollback added by 0019; `replacefile_windows.go` made atomic and gRPC `Restore` given snapshot+rollback by 0021.) `Server.handleRestore` (0019) takes a safety snapshot and rolls back on failure. Patch 0021 makes `replaceFile` atomic — Go's `os.Rename` on Windows already uses `MoveFileEx(MOVEFILE_REPLACE_EXISTING)`, an atomic in-place replace, so the prior `os.Remove`-then-`os.Rename` crash window is gone — and adds the same snapshot+rollback to gRPC `Restore` on both copy- and reopen-failure. Verified by static inspection of the patched build (base + 0019 + 0020 + 0021).
-- The **Vector** feature is now UNBLOCKED (patch 0020 + `MDDB_EMBEDDING_PROVIDER=offline` in the Vector audit job). The full embed→index→search pipeline runs on Windows CI via the deterministic offline provider. All Windows build/runtime/test/CI gaps are covered by patches 0001–0021.
+- **SEC-OPEN-1 / SEC-OPEN-2 — CLOSED by patch 0021, regression fixed by 0022.** (HTTP `handleRestore` snapshot+rollback added by 0019; `replacefile_windows.go` made atomic and gRPC `Restore` given snapshot+rollback by 0021.) `Server.handleRestore` (0019) takes a safety snapshot and rolls back on failure. Patch 0021 makes `replaceFile` atomic — Go's `os.Rename` on Windows already uses `MoveFileEx(MOVEFILE_REPLACE_EXISTING)`, an atomic in-place replace, so the prior `os.Remove`-then-`os.Rename` crash window is gone — and adds the same snapshot+rollback to gRPC `Restore` on both copy- and reopen-failure. Verified by static inspection of the patched build (base + 0019 + 0020 + 0021).
+- **gRPC Restore reopen regression (0021) — FIXED by patch 0022.** 0021 also reopened the live DB (a `bolt.Open` + `g.server.DB` reassignment) *between* taking the snapshot and copying the backup over the live path. On Windows you cannot rename/copy over an open file, so `TestGRPCRestore_Success` failed with `copy backup: rename ... test.db: Access is denied` (CI run `31294191137`, "Run server unit tests" step). Patch 0022 removes that premature reopen; the live DB now stays closed from the initial `Close()` until the backup copy succeeds, then reopens once. The snapshot+rollback safety behavior from 0021 is preserved. Re-dispatch the audit to confirm all 15 jobs green and the earned score returns to 100/100.
+- The **Vector** feature is now UNBLOCKED (patch 0020 + `MDDB_EMBEDDING_PROVIDER=offline` in the Vector audit job). The full embed→index→search pipeline runs on Windows CI via the deterministic offline provider. All Windows build/runtime/test/CI gaps are covered by patches 0001–0022.
 
 ## Blockers
 

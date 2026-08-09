@@ -3,8 +3,8 @@
 Ordered vendor patch series for the MDDB Windows port.
 
 **Upstream baseline:** `dbc9def` — "Add GitHub Actions workflow for MDDB Panel build"
-**Total patches:** 20
-**Last updated:** 2026-08-08
+**Total patches:** 21
+**Last updated:** 2026-08-09
 
 ---
 
@@ -293,3 +293,15 @@ Ordered vendor patch series for the MDDB Windows port.
   - `services/mddbd/internal/embedding/embedding_extra_test.go` (modified)
 - **Purpose:** Add a deterministic, network-free `offline` embedding provider (`MDDB_EMBEDDING_PROVIDER=offline`) so the full embed→index→search pipeline runs on Windows CI without an external model or GPU. Vectors are derived from an FNV-1a hash of the text, L2-normalized, and reproducible across runs (semantically neutral but functionally complete). Wired into both `NewProvider()` and `InitializeEmbeddingFromConfig` (panel-configured default), plus a unit test asserting determinism and unit-length. This unblocks the Vector & Hybrid feature job in `Mddb-Windows-Audit.yml`, which now sets `MDDB_EMBEDDING_PROVIDER=offline` and grades Vector **PASS** instead of BLOCKED.
 - **Dependencies:** None (standalone; consumed by the Vector audit job).
+
+## 0021 — Security: atomic Windows replace + gRPC restore rollback (SEC-OPEN-1/SEC-OPEN-2)
+
+- **Commit:** `1e66ea1`
+- **Type:** Windows-only (security hardening; not upstreamable as-is, but the atomic-replace technique is generic)
+- **Upstreamable:** No (port accommodation; the gRPC rollback mirrors 0019's HTTP pattern)
+- **Status:** Applied
+- **Files:**
+  - `services/mddbd/replacefile_windows.go` (modified)
+  - `services/mddbd/grpc_server.go` (modified)
+- **Purpose:** Close the two security gaps that patch 0019 only partially addressed. SEC-OPEN-1: `replaceFile` on Windows no longer does `os.Remove(dst)` before `os.Rename`; Go's `os.Rename` on Windows already uses `MoveFileEx(MOVEFILE_REPLACE_EXISTING)` (an atomic in-place replace), so the prior `remove` only widened the crash window. All callers (replication snapshot apply, the generic write helper) are now atomic. SEC-OPEN-2: gRPC `Restore` now takes a safety snapshot of the live DB before closing and calls `rollbackRestore(server, snapshot)` on BOTH copy-failure and reopen-failure branches (mirroring `Server.handleRestore` from 0019), so a failed restore rolls back instead of leaving the server with a closed handle and a lost database.
+- **Dependencies:** 0019 (`Server.handleRestore` snapshot+rollback pattern, `rollbackRestore`); `replaceFile`/`copyFile` primitives.

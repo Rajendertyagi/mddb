@@ -1,0 +1,108 @@
+From 1e66ea1d0ac835567b880d17a763c46e7e36a13d Mon Sep 17 00:00:00 2001
+From: Rajendertyagi <86180775+Rajendertyagi@users.noreply.github.com>
+Date: Sun, 9 Aug 2026 09:27:04 +0530
+Subject: [PATCH] fix(security): atomic Windows replace + gRPC restore rollback
+ (SEC-OPEN-1/SEC-OPEN-2)
+
+SEC-OPEN-1: replacefile_windows.go replaceFile() no longer does os.Remove(dst)
+before os.Rename. Go's os.Rename on Windows already uses MoveFileEx
+(MOVEFILE_REPLACE_EXISTING), an atomic in-place replace; the prior remove only
+widened the crash window. Now all callers (replication apply, util write helper)
+are atomic.
+
+SEC-OPEN-2: grpc_server.go Restore() now takes a safety snapshot of the live DB
+before closing, and calls rollbackRestore(server, snapshot) on BOTH copy-failure
+and reopen-failure branches (mirroring http_handlers.go handleRestore). A failed
+restore no longer leaves the server with a closed handle and a lost database.
+---
+ services/mddbd/grpc_server.go         | 30 +++++++++++++++++++++++----
+ services/mddbd/replacefile_windows.go | 14 +++++--------
+ 2 files changed, 31 insertions(+), 13 deletions(-)
+
+diff --git a/services/mddbd/grpc_server.go b/services/mddbd/grpc_server.go
+index f233f16..25d09e6 100644
+--- a/services/mddbd/grpc_server.go
++++ b/services/mddbd/grpc_server.go
+@@ -6,6 +6,7 @@ import (
+ 	"fmt"
+ 	"log"
+ 	"os"
++	"strconv"
+ 	"strings"
+ 	"time"
+ 
+@@ -493,20 +494,41 @@ func (g *GRPCServer) Restore(ctx context.Context, req *proto.RestoreRequest) (*p
+ 	// in-flight readers and blocks new ones for the whole close->copy->reopen,
+ 	// and is required on Windows where an open file cannot be removed/renamed.
+ 	if err := g.server.withRestoreLock(func() error {
+-		// Close the live DB so the file can be swapped (required on Windows,
+-		// where an open file cannot be removed/renamed).
++		// Take a safety snapshot of the live database BEFORE replacing it, so a
++		// failed restore can be rolled back (SEC-OPEN-2). Mirrors http_handlers.go
++		// handleRestore.
++		snapshot := g.server.Path + ".restore-bak-" + strconv.FormatInt(time.Now().UnixNano(), 10)
+ 		if err := g.server.DB.Close(); err != nil {
+-			return fmt.Errorf("close db: %w", err)
++			return fmt.Errorf("close db for snapshot: %w", err)
+ 		}
++		if err := copyFile(g.server.Path, snapshot); err != nil {
++			// reopen the live db so the server stays usable, then fail
++			if db, oerr := bolt.Open(g.server.Path, 0600, getOptimizedBoltOptions()); oerr == nil {
++				g.server.DB = db
++			}
++			return fmt.Errorf("snapshot live db: %w", err)
++		}
++		if db, oerr := bolt.Open(g.server.Path, 0600, getOptimizedBoltOptions()); oerr != nil {
++			return fmt.Errorf("reopen live db after snapshot: %w", oerr)
++		} else {
++			g.server.DB = db
++		}
++
+ 		if err := copyFile(safeFrom, g.server.Path); err != nil {
+-			return err
++			rollbackRestore(g.server, snapshot)
++			return fmt.Errorf("copy backup: %w", err)
+ 		}
+ 		// Reopen the DB in place; restore the same pointer so the server keeps using it.
+ 		db, err := bolt.Open(g.server.Path, 0600, getOptimizedBoltOptions())
+ 		if err != nil {
++			rollbackRestore(g.server, snapshot)
+ 			return fmt.Errorf("reopen db: %w", err)
+ 		}
+ 		g.server.DB = db
++		// Discard the safety snapshot now that the new database is valid.
++		if err := os.Remove(snapshot); err != nil {
++			log.Printf("WARNING: failed to remove restore snapshot %s: %v", snapshot, err)
++		}
+ 		// Reset binlog after restore to force followers to re-snapshot.
+ 		if g.server.Binlog != nil {
+ 			if err := g.server.Binlog.Rotate(0); err != nil {
+diff --git a/services/mddbd/replacefile_windows.go b/services/mddbd/replacefile_windows.go
+index 7a2fad1..b46c1d4 100644
+--- a/services/mddbd/replacefile_windows.go
++++ b/services/mddbd/replacefile_windows.go
+@@ -2,16 +2,12 @@
+ 
+ package main
+ 
+-import (
+-	"os"
+-	"path/filepath"
+-)
++import "os"
+ 
+-// replaceFile atomically replaces dst with src. Windows os.Rename fails when
+-// dst already exists, so remove it first (callers reload from disk after).
++// replaceFile atomically replaces dst with src. On Windows, os.Rename uses
++// MoveFileEx(MOVEFILE_REPLACE_EXISTING), which is an atomic in-place replace,
++// so no separate os.Remove is needed — doing os.Remove first would only widen
++// the crash window (SEC-OPEN-1). Callers must ensure dst is not currently open.
+ func replaceFile(src, dst string) error {
+-	if err := os.Remove(filepath.Clean(dst)); err != nil && !os.IsNotExist(err) {
+-		return err
+-	}
+ 	return os.Rename(src, dst)
+ }
+-- 
+2.55.0.windows.3
+

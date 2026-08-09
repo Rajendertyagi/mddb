@@ -2,7 +2,7 @@
 
 Current status of the MDDB Windows port.
 
-**Last updated:** 2026-08-08
+**Last updated:** 2026-08-09
 
 ---
 
@@ -18,8 +18,8 @@ Current status of the MDDB Windows port.
 
 | Item | Value |
 |------|-------|
-| Total vendor patches | 20 |
-| Patch range | `0001` – `0020` |
+| Total vendor patches | 21 |
+| Patch range | `0001` – `0021` |
 | Series complete (reproduces `main` from baseline) | Yes — verified `git diff` empty, `git diff-tree -r` exit 0 |
 
 ## Windows Build Status
@@ -32,8 +32,8 @@ Current status of the MDDB Windows port.
 
 ## Known Issues
 
-- **SEC-OPEN-1 / SEC-OPEN-2 — CLOSED by patch 0019.** `Server.handleRestore` previously replaced the live DB file in place with no safety snapshot and no rollback on a corrupt/incompatible backup. Patch 0019 adds an atomic pre-restore snapshot, a validated close→copy→open under `Server.withRestoreLock`, and rollback to the snapshot on failure. Both gaps were the same root defect (unconditional overwrite of the live file).
-- The **Vector** feature is now UNBLOCKED (patch 0020 + `MDDB_EMBEDDING_PROVIDER=offline` in the Vector audit job). The full embed→index→search pipeline runs on Windows CI via the deterministic offline provider. All Windows build/runtime/test/CI gaps are covered by patches 0001–0020.
+- **SEC-OPEN-1 / SEC-OPEN-2 — CLOSED by patch 0021.** (HTTP `handleRestore` snapshot+rollback added by 0019; `replacefile_windows.go` made atomic and gRPC `Restore` given snapshot+rollback by 0021.) `Server.handleRestore` (0019) takes a safety snapshot and rolls back on failure. Patch 0021 makes `replaceFile` atomic — Go's `os.Rename` on Windows already uses `MoveFileEx(MOVEFILE_REPLACE_EXISTING)`, an atomic in-place replace, so the prior `os.Remove`-then-`os.Rename` crash window is gone — and adds the same snapshot+rollback to gRPC `Restore` on both copy- and reopen-failure. Verified by static inspection of the patched build (base + 0019 + 0020 + 0021).
+- The **Vector** feature is now UNBLOCKED (patch 0020 + `MDDB_EMBEDDING_PROVIDER=offline` in the Vector audit job). The full embed→index→search pipeline runs on Windows CI via the deterministic offline provider. All Windows build/runtime/test/CI gaps are covered by patches 0001–0021.
 
 ## Blockers
 

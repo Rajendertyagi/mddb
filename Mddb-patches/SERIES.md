@@ -3,7 +3,7 @@
 Ordered vendor patch series for the MDDB Windows port.
 
 **Upstream baseline:** `dbc9def` — "Add GitHub Actions workflow for MDDB Panel build"
-**Total patches:** 19
+**Total patches:** 20
 **Last updated:** 2026-08-08
 
 ---
@@ -277,3 +277,19 @@ Ordered vendor patch series for the MDDB Windows port.
   - `services/mddbd/http_handlers.go` (modified)
 - **Purpose:** `Server.handleRestore` replaced the live DB file in place with no safety snapshot and no rollback on a corrupt or incompatible backup, so a failed restore destroyed the live database (SEC-OPEN-1: non-atomic replace of the live DB file; SEC-OPEN-2: no rollback when the target is corrupt). Both are the same root defect — the live file was overwritten unconditionally. Take a safety snapshot of the live DB before swapping, perform the close→copy→open under `Server.withRestoreLock` (exclusive `restoreMu`), validate the restored DB opens with `bolt.Open`, and roll back to the snapshot if copy or open fails. Remove the snapshot only after a successful, validated swap. This is the HTTP-handler counterpart to the gRPC `Restore` hardening in 0009.
 - **Dependencies:** 0004 (`replaceFile`/`copyFile`); uses `Server.withRestoreLock` / `restoreMu` (server_restore.go); mirrors 0009.
+
+---
+
+## 0020 — Embedding: deterministic offline provider (unblocks Vector on Windows CI)
+
+- **Commit:** `0ca19ea`
+- **Type:** Windows-only (offline/CI embedding provider to unblock Vector on Windows CI)
+- **Upstreamable:** No (port accommodation; the provider itself is generic and could be upstreamed)
+- **Status:** Applied
+- **Files:**
+  - `services/mddbd/internal/embedding/embedding_offline.go` (new)
+  - `services/mddbd/internal/embedding/embedding.go` (modified)
+  - `services/mddbd/embedding_config.go` (modified)
+  - `services/mddbd/internal/embedding/embedding_extra_test.go` (modified)
+- **Purpose:** Add a deterministic, network-free `offline` embedding provider (`MDDB_EMBEDDING_PROVIDER=offline`) so the full embed→index→search pipeline runs on Windows CI without an external model or GPU. Vectors are derived from an FNV-1a hash of the text, L2-normalized, and reproducible across runs (semantically neutral but functionally complete). Wired into both `NewProvider()` and `InitializeEmbeddingFromConfig` (panel-configured default), plus a unit test asserting determinism and unit-length. This unblocks the Vector & Hybrid feature job in `Mddb-Windows-Audit.yml`, which now sets `MDDB_EMBEDDING_PROVIDER=offline` and grades Vector **PASS** instead of BLOCKED.
+- **Dependencies:** None (standalone; consumed by the Vector audit job).

@@ -3,7 +3,7 @@
 Searchable index of the vendor patch series.
 
 **Upstream baseline:** `dbc9def`
-**Total patches:** 19
+**Total patches:** 20
 **Last updated:** 2026-08-08
 
 ## By Patch Number
@@ -29,6 +29,7 @@ Searchable index of the vendor patch series.
 | 0017 | `63fbc50` | Audit-test: poll for time-window query | tests | Yes |
 | 0018 | `1607fb0` | Indexqueue-test: poll for meta swap | tests | Yes |
 | 0019 | `deea49b` | HTTP: atomic snapshot+rollback for Restore (SEC-OPEN-1/SEC-OPEN-2) | storage / security / HTTP | No |
+| 0020 | `0ca19ea` | Embedding: deterministic offline provider (unblocks Vector on Windows CI) | embedding / vector / CI | No |
 
 ## By Subsystem
 
@@ -45,6 +46,7 @@ Searchable index of the vendor patch series.
 - 0008 `076dc2d` — Audit: globally unique BoltDB keys
 - 0009 `1dadef4` — gRPC: close+swap+reopen DB during Restore
 - 0019 `deea49b` — HTTP: atomic snapshot+rollback for Restore (SEC-OPEN-1/SEC-OPEN-2)
+- 0020 `0ca19ea` — Embedding: deterministic offline provider (unblocks Vector on Windows CI)
 
 ### gRPC
 - 0009 `1dadef4` — gRPC: close+swap+reopen DB during Restore
@@ -70,7 +72,7 @@ Searchable index of the vendor patch series.
 ## By Type
 
 ### Windows-only (not upstreamable)
-- 0001, 0002, 0003, 0004, 0009, 0010, 0014, 0019
+- 0001, 0002, 0003, 0004, 0009, 0010, 0014, 0019, 0020
 
 ### Cross-platform correctness (upstreamable)
 - 0005, 0006, 0007, 0008, 0011, 0012, 0013, 0015, 0016, 0017, 0018

@@ -28,12 +28,25 @@ Current status of the MDDB Windows port.
 |--------|--------|
 | `mddbd.exe` cross-compile (Linux → Windows, `CGO_ENABLED=0`) | Passing |
 | `mddb-cli.exe` cross-compile (Linux → Windows, `CGO_ENABLED=0`) | Passing |
-| Native `go test ./...` on `windows-latest` | Was broken by 0021 (gRPC `Restore` reopened the live DB before the backup copy → `TestGRPCRestore_Success` failed with "Access is denied"); fixed by 0022. Re-dispatch the Windows audit to confirm all jobs green. |
+| Native `go test ./...` on `windows-latest` | **Passing** — run `31296463230` (all 15 jobs green). 0021 had reopened the live DB before the backup copy → `TestGRPCRestore_Success` failed with "Access is denied" (run `31294191137`); **fixed by 0022** (live DB stays closed from the initial `Close()` until the backup copy succeeds, then reopens once). `TestGRPCRestore_Success` now PASSES. |
+
+## Final Audit Result (run `31296463230`, commit `b855760`)
+
+| Metric | Score |
+|--------|-------|
+| Overall Health | **100/100** |
+| Windows Readiness | **100/100** |
+| Final verdict | **Ready for production** |
+
+- All 15 audit jobs green: `Build Windows Executables`, `Run Unit Tests`, the 13 feature jobs (gRPC API; Ops/Observability/Config; File Upload & Document Processing; Vector & Hybrid Search; Authentication; GraphQL & MCP; Data & Search APIs; Live Functional Tests core; Encryption at rest; Backup & Restore; Replication), `Security & Patch Audit (evidence-graded)`, and `Generate Final Audit Report`.
+- Security grade `sec_score = 100` (auth + enc + bak all PASS; `bugs = []`).
+- Feature matrix (from report): GraphQL 5/5, MCP 5/5, Vector Search 4/4 — every feature PASS, no UNTESTED/BLOCKED.
+- The pre-0022 run `31294191137` (headSha `aa460ef`) remains `failure`; that is the 0021 regression that 0022 closed.
 
 ## Known Issues
 
-- **SEC-OPEN-1 / SEC-OPEN-2 — CLOSED by patch 0021, regression fixed by 0022.** (HTTP `handleRestore` snapshot+rollback added by 0019; `replacefile_windows.go` made atomic and gRPC `Restore` given snapshot+rollback by 0021.) `Server.handleRestore` (0019) takes a safety snapshot and rolls back on failure. Patch 0021 makes `replaceFile` atomic — Go's `os.Rename` on Windows already uses `MoveFileEx(MOVEFILE_REPLACE_EXISTING)`, an atomic in-place replace, so the prior `os.Remove`-then-`os.Rename` crash window is gone — and adds the same snapshot+rollback to gRPC `Restore` on both copy- and reopen-failure. Verified by static inspection of the patched build (base + 0019 + 0020 + 0021).
-- **gRPC Restore reopen regression (0021) — FIXED by patch 0022.** 0021 also reopened the live DB (a `bolt.Open` + `g.server.DB` reassignment) *between* taking the snapshot and copying the backup over the live path. On Windows you cannot rename/copy over an open file, so `TestGRPCRestore_Success` failed with `copy backup: rename ... test.db: Access is denied` (CI run `31294191137`, "Run server unit tests" step). Patch 0022 removes that premature reopen; the live DB now stays closed from the initial `Close()` until the backup copy succeeds, then reopens once. The snapshot+rollback safety behavior from 0021 is preserved. Re-dispatch the audit to confirm all 15 jobs green and the earned score returns to 100/100.
+- **SEC-OPEN-1 / SEC-OPEN-2 — VERIFIED FIXED (live evidence, run `31296463230`).** HTTP `handleRestore` snapshot+rollback added by 0019. `replacefile_windows.go` made atomic by 0021 (Go's `os.Rename` on Windows already uses `MoveFileEx(MOVEFILE_REPLACE_EXISTING)`, an atomic in-place replace — the prior `os.Remove`-then-`os.Rename` crash window is gone). **Attribution nuance:** the gRPC `Restore` path got the snapshot+rollback scaffolding in 0021, but 0021 *also* reopened the live DB between the snapshot and the backup copy — so on Windows `TestGRPCRestore_Success` still failed with "Access is denied". SEC-OPEN-2 for the **gRPC path was actually finalized by patch 0022** (removed the premature reopen; live DB stays closed until the backup copy succeeds, then reopens once — mirroring 0019). So: SEC-OPEN-1 = fixed in 0021 (unchanged since); SEC-OPEN-2 HTTP path = 0019, gRPC path = 0022. Evidence: `TestGRPCRestore_Success` PASSES in run `31296463230`; security audit `bugs = []`, `sec_score = 100` (3 graded features auth/enc/bak = 90 → scaled to 100).
+- **gRPC Restore reopen regression (0021) — FIXED & CONFIRMED by patch 0022 (run `31296463230`, all 15 jobs green, earned score 100/100).** 0021 also reopened the live DB (a `bolt.Open` + `g.server.DB` reassignment) *between* taking the snapshot and copying the backup over the live path. On Windows you cannot rename/copy over an open file, so `TestGRPCRestore_Success` failed with `copy backup: rename ... test.db: Access is denied` (CI run `31294191137`, "Run server unit tests" step). Patch 0022 removes that premature reopen; the live DB now stays closed from the initial `Close()` until the backup copy succeeds, then reopens once. The snapshot+rollback safety behavior from 0021 is preserved. `TestGRPCRestore_Success` now PASSES.
 - The **Vector** feature is now UNBLOCKED (patch 0020 + `MDDB_EMBEDDING_PROVIDER=offline` in the Vector audit job). The full embed→index→search pipeline runs on Windows CI via the deterministic offline provider. All Windows build/runtime/test/CI gaps are covered by patches 0001–0022.
 
 ## Blockers

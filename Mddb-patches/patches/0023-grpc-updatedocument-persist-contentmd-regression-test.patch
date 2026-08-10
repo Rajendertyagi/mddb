@@ -1,0 +1,74 @@
+diff --git a/services/mddbd/grpc_update_document_content_test.go b/services/mddbd/grpc_update_document_content_test.go
+new file mode 100644
+index 0000000..ee6ace3
+--- /dev/null
++++ b/services/mddbd/grpc_update_document_content_test.go
+@@ -0,0 +1,68 @@
++package main
++
++import (
++	"context"
++	"testing"
++
++	pb "mddb/proto"
++)
++
++// TestGRPCUpdateDocumentPersistsContentMd is a regression test for BUG-10:
++// after a gRPC UpdateDocument sets ContentMd to a new value, a subsequent Get
++// must return that value. The content must be persisted to BoltDB by
++// UpdateDocument, not dropped or left at the pre-update value.
++//
++// Sequence: Add (ContentMd = "v1-content") -> UpdateDocument (ContentMd =
++// "v2-content", UpdateContent = true) -> Get -> must return "v2-content".
++func TestGRPCUpdateDocumentPersistsContentMd(t *testing.T) {
++	gs, _, cleanup := newTestGRPCServer(t)
++	defer cleanup()
++
++	const (
++		coll = "bug10"
++		key  = "doc1"
++		lang = "en"
++	)
++
++	// Add v1
++	added, err := gs.Add(context.Background(), &pb.AddRequest{
++		Collection: coll,
++		Key:        key,
++		Lang:       lang,
++		ContentMd:  "v1-content",
++	})
++	if err != nil {
++		t.Fatalf("Add: %v", err)
++	}
++	if added.ContentMd != "v1-content" {
++		t.Fatalf("Add returned ContentMd=%q, want v1-content", added.ContentMd)
++	}
++
++	// UpdateDocument -> v2
++	upd, err := gs.UpdateDocument(context.Background(), &pb.UpdateDocumentRequest{
++		Collection:    coll,
++		Key:           key,
++		Lang:          lang,
++		UpdateContent: true,
++		ContentMd:     "v2-content",
++	})
++	if err != nil {
++		t.Fatalf("UpdateDocument: %v", err)
++	}
++	if upd.ContentMd != "v2-content" {
++		t.Fatalf("UpdateDocument returned ContentMd=%q, want v2-content", upd.ContentMd)
++	}
++
++	// Get must return v2 (persistence round-trip, not just the in-memory return).
++	got, err := gs.Get(context.Background(), &pb.GetRequest{
++		Collection: coll,
++		Key:        key,
++		Lang:       lang,
++	})
++	if err != nil {
++		t.Fatalf("Get: %v", err)
++	}
++	if got.ContentMd != "v2-content" {
++		t.Errorf("BUG-10 regression: Get returned ContentMd=%q, want v2-content (content not persisted by UpdateDocument)", got.ContentMd)
++	}
++}

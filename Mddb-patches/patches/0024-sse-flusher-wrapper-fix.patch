@@ -1,0 +1,161 @@
+diff --git a/services/mddbd/internal/metrics/metrics.go b/services/mddbd/internal/metrics/metrics.go
+index 9a0c5e0..4763950 100644
+--- a/services/mddbd/internal/metrics/metrics.go
++++ b/services/mddbd/internal/metrics/metrics.go
+@@ -153,6 +153,17 @@ func (r *statusRecorder) Write(b []byte) (int, error) {
+ 	return r.ResponseWriter.Write(b)
+ }
+ 
++// Flush forwards to the embedded ResponseWriter so middleware that wraps w
++// (for example, SSE / streaming handlers) still observes a flushable writer.
++// BUG-11 root cause: without this, w.(http.Flusher) failed and /v1/events
++// returned 500 "streaming not supported" whenever metrics were enabled (the
++// metrics middleware wraps w in a statusRecorder).
++func (r *statusRecorder) Flush() {
++	if f, ok := r.ResponseWriter.(http.Flusher); ok {
++		f.Flush()
++	}
++}
++
+ // Middleware wraps an http.Handler, recording request count and latency.
+ func (m *Metrics) Middleware(next http.Handler) http.Handler {
+ 	if !m.enabled {
+diff --git a/services/mddbd/sse.go b/services/mddbd/sse.go
+index 0adf956..d8c9324 100644
+--- a/services/mddbd/sse.go
++++ b/services/mddbd/sse.go
+@@ -201,11 +201,16 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
+ 		return
+ 	}
+ 
+-	flusher, ok := w.(http.Flusher)
+-	if !ok {
++	// SSE requires a flushable transport. Use http.NewResponseController so
++	// the assertion holds even when w is wrapped by middleware that does not
++	// itself re-export http.Flusher (e.g. the metrics statusRecorder — the
++	// BUG-11 root cause: "streaming not supported" on the Windows build).
++	// supportsFlush walks any wrapper via Unwrap to detect a real Flusher.
++	if !supportsFlush(w) {
+ 		http.Error(w, `{"error":"streaming not supported"}`, http.StatusInternalServerError)
+ 		return
+ 	}
++	rc := http.NewResponseController(w)
+ 
+ 	collection := r.URL.Query().Get("collection")
+ 	ip := clientIP(r)
+@@ -272,7 +277,7 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
+ 	}
+ 	_, _ = fmt.Fprintf(w, "event: connected\ndata: {\"status\":\"connected\",\"collection\":%q,\"mode\":%q,\"user\":%q}\n\n", // #nosec G705 -- values quoted with %q, safe for JSON/SSE
+ 		collection, mode, username)
+-	flusher.Flush()
++	rc.Flush()
+ 
+ 	log.Printf("SSE client connected (collection=%q, mode=%s, user=%q, total=%d)", collection, mode, username, h.ClientCount()) // #nosec G706 -- values sanitized with %q
+ 
+@@ -291,10 +296,30 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
+ 				return
+ 			}
+ 			_, _ = w.Write(msg)
+-			flusher.Flush()
++			rc.Flush()
+ 		case <-ticker.C:
+ 			_, _ = fmt.Fprintf(w, ": keepalive %d\n\n", time.Now().Unix())
+-			flusher.Flush()
++			rc.Flush()
++		}
++	}
++}
++
++// supportsFlush reports whether the response writer chain can flush, walking
++// through any middleware wrappers (metrics statusRecorder, MCP statusWriter,
++// etc.) via Unwrap. This lets SSE work even when w is wrapped by a writer that
++// does not implement http.Flusher directly — the BUG-11 root-cause guard.
++func supportsFlush(w http.ResponseWriter) bool {
++	for {
++		if _, ok := w.(http.Flusher); ok {
++			return true
++		}
++		u, ok := w.(interface{ Unwrap() http.ResponseWriter })
++		if !ok {
++			return false
++		}
++		w = u.Unwrap()
++		if w == nil {
++			return false
+ 		}
+ 	}
+ }
+diff --git a/services/mddbd/sse_test.go b/services/mddbd/sse_test.go
+index ed315e0..6a613f6 100644
+--- a/services/mddbd/sse_test.go
++++ b/services/mddbd/sse_test.go
+@@ -1,6 +1,7 @@
+ package main
+ 
+ import (
++	"bufio"
+ 	"strings"
+ 	"testing"
+ 	"time"
+@@ -235,6 +236,61 @@ func TestSSEIPCountCleanup(t *testing.T) {
+ 	}
+ }
+ 
++// nonFlusherWrap simulates production middleware (e.g. the metrics
++// statusRecorder) that wraps http.ResponseWriter in a type which embeds the
++// underlying writer but does NOT itself declare http.Flusher. Before the
++// BUG-11 fix, handleSSE's raw w.(http.Flusher) assertion failed against such a
++// wrapper and returned 500 "streaming not supported".
++type nonFlusherWrap struct {
++	http.ResponseWriter
++}
++
++// TestSSEHandleThroughNonFlusherWrapper is the BUG-11 regression test: /v1/events
++// must stream successfully even when the response writer is wrapped by a
++// middleware that does not re-export http.Flusher. It asserts the connection
++// succeeds (200), Content-Type is text/event-stream, and the initial "connected"
++// event is actually delivered.
++func TestSSEHandleThroughNonFlusherWrapper(t *testing.T) {
++	s := &Server{SSEHub: NewSSEHub(true, 100, 5)}
++
++	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		s.handleSSE(&nonFlusherWrap{ResponseWriter: w}, r)
++	}))
++	defer ts.Close()
++
++	resp, err := http.Get(ts.URL)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer func() { _ = resp.Body.Close() }()
++
++	if resp.StatusCode != http.StatusOK {
++		t.Fatalf("BUG-11: expected 200, got %d (SSE returned 'streaming not supported')", resp.StatusCode)
++	}
++	if ct := resp.Header.Get("Content-Type"); ct != "text/event-stream" {
++		t.Errorf("expected Content-Type text/event-stream, got %q", ct)
++	}
++
++	// The initial "connected" event must be delivered (proves streaming works
++	// through the wrapper, not just that the handler returned 200).
++	ch := make(chan string, 1)
++	go func() {
++		sc := bufio.NewScanner(resp.Body)
++		if sc.Scan() {
++			ch <- sc.Text()
++		}
++		close(ch)
++	}()
++	select {
++	case line := <-ch:
++		if !strings.Contains(line, "event: connected") {
++			t.Errorf("expected 'event: connected' in first SSE frame, got %q", line)
++		}
++	case <-time.After(2 * time.Second):
++		t.Fatal("timeout: no SSE data delivered through wrapper (BUG-11 regression)")
++	}
++}
++
+ func TestClientIP(t *testing.T) {
+ 	tests := []struct {
+ 		name       string

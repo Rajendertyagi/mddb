@@ -1,0 +1,32 @@
+diff --git a/services/mddbd/grpc_metadata.go b/services/mddbd/grpc_metadata.go
+index 3f89428..e4279aa 100644
+--- a/services/mddbd/grpc_metadata.go
++++ b/services/mddbd/grpc_metadata.go
+@@ -6,6 +6,7 @@ import (
+ 	"errors"
+ 	"fmt"
+ 	"mddb/internal/binlog"
++	"mddb/internal/cache"
+ 	"mddb/internal/storage"
+ 	proto "mddb/proto"
+ 	"strings"
+@@ -350,6 +351,19 @@ func (g *GRPCServer) UpdateDocument(ctx context.Context, req *proto.UpdateDocume
+ 		return nil, status.Error(codes.Internal, err.Error())
+ 	}
+ 
++	// GO-002 / BUG-10: Invalidate the read-through caches so a subsequent gRPC
++	// Get (which reads cache-first, see grpc_server.go) returns the freshly
++	// written document instead of a stale entry. REST's addDocument already does
++	// this (document_ops.go:348-354); the gRPC UpdateDocument path did not, so
++	// Get returned pre-update content until the 5-minute cache TTL expired.
++	cacheKey := cache.BuildCacheKey(req.Collection, req.Key, req.Lang)
++	if g.server.Cache != nil {
++		g.server.Cache.Delete(cacheKey)
++	}
++	if g.server.LockFreeCache != nil {
++		g.server.LockFreeCache.Delete(cacheKey)
++	}
++
+ 	// Post-update hooks
+ 	if req.UpdateContent && g.server.EmbeddingWorker != nil && saved.ContentMD != "" {
+ 		g.server.EmbeddingWorker.Enqueue(EmbeddingJob{

@@ -3,7 +3,7 @@
 Ordered vendor patch series for the MDDB Windows port.
 
 **Upstream baseline:** `dbc9def` — "Add GitHub Actions workflow for MDDB Panel build"
-**Total patches:** 25
+**Total patches:** 26
 **Last updated:** 2026-08-10
 
 ---
@@ -326,10 +326,10 @@ Ordered vendor patch series for the MDDB Windows port.
 - **Commit:** `93dece8`
 - **Type:** Test (regression guard) — no production source change
 - **Upstreamable:** Yes (regression test)
-- **Status:** Authored (committed); CI verification pending
+- **Status:** Authored (committed); regression guard **FAILED in CI as intended** (run `31378799170`) → confirmed BUG-10 is **real**; production fix = patch **0026** (CI pending)
 - **Files:**
   - `services/mddbd/grpc_update_document_content_test.go` (new)
-- **Purpose:** BUG-10 reported that gRPC `UpdateDocument` returned OK but did not persist `content_md`. Read-only investigation of the current source (`grpc_metadata.go:292` already sets `doc.ContentMD = req.ContentMd`; the handler is identical pre/post refactor) shows the defect is **not reproducible in the current tree** — REST and GraphQL paths were always correct and the gRPC path is correct today. This patch therefore ships a **regression guard** (`TestGRPCUpdateDocumentPersistsContentMd`): Add("v1") → UpdateDocument("v2", update_content=true) → Get must return "v2". It locks the correct behaviour so a future regression fails CI instead of shipping silently. No native source is modified.
+- **Purpose:** BUG-10 reported that gRPC `UpdateDocument` returned OK but did not persist `content_md`. An initial read-only assessment concluded it was **not reproducible** (`grpc_metadata.go:292` already sets `doc.ContentMD = req.ContentMd`), so this patch shipped a **regression guard** only. CI on `93dece8` then **overturned** that assessment: run `31378799170` FAILED `TestGRPCUpdateDocumentPersistsContentMd` with `Get returned ContentMd="v1-content", want v2-content`, proving the defect is real. Root cause: `UpdateDocument` writes BoltDB but never invalidates the read caches (`g.server.Cache` / `g.server.LockFreeCache`) that `Add` populated, so the cache-first gRPC `Get` (grpc_server.go:244-265) returns the stale `v1-content`. REST works because `document_ops.go:348-354` calls `s.Cache.Delete` + `s.LockFreeCache.Delete` after an update; the gRPC `UpdateDocument` path omitted this. The regression guard correctly exposed the real defect; the production fix ships as patch **0026** (cache invalidation in `grpc_metadata.go`, mirroring `document_ops.go`).
 - **Dependencies:** None (standalone regression test).
 
 ---
@@ -339,7 +339,7 @@ Ordered vendor patch series for the MDDB Windows port.
 - **Commit:** `93dece8`
 - **Type:** Cross-platform correctness (fixes a real defect; manifests on the Windows build under the metrics middleware)
 - **Upstreamable:** Yes (genuine fix)
-- **Status:** Authored (committed); CI verification pending
+- **Status:** FIXED — CI verified PASS (run `31378799170`; `TestSSEHandleThroughNonFlusherWrapper` no longer fails)
 - **Files:**
   - `services/mddbd/internal/metrics/metrics.go` (modified — `statusRecorder.Flush()`)
   - `services/mddbd/sse.go` (modified — `supportsFlush` + `http.NewResponseController`)
@@ -354,9 +354,22 @@ Ordered vendor patch series for the MDDB Windows port.
 - **Commit:** pending — authored, committed alongside this doc update (local commit only; user pushes)
 - **Type:** Cross-platform correctness (completes the BUG-11 fix)
 - **Upstreamable:** Yes (genuine fix)
-- **Status:** Authored; CI verification pending (re-run after commit + push)
+- **Status:** FIXED — CI verified PASS (run `31378799170`; BUG-11 SSE 500 resolved)
 - **Files:**
   - `services/mddbd/internal/metrics/metrics.go` (modified — `statusRecorder.Unwrap()`)
   - `services/mddbd/sse_test.go` (modified — `nonFlusherWrap.Unwrap()`)
 - **Purpose:** Completes BUG-11. Patch 0024 added `statusRecorder.Flush()` and switched `handleSSE` to `http.NewResponseController` + `supportsFlush` (which walks wrappers via `Unwrap`), but neither `statusRecorder` nor the regression-test wrapper `nonFlusherWrap` implemented `Unwrap()`, so `supportsFlush` could not find the underlying `Flusher` and SSE still returned 500 in the wrapped path. This patch adds `func (r *statusRecorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }` and the matching `func (n *nonFlusherWrap) Unwrap() http.ResponseWriter { return n.ResponseWriter }`, so flush-aware code reaches the real `Flusher` through any wrapper and SSE streams `text/event-stream` (200) behind the metrics middleware and in the regression test.
 - **Dependencies:** 0024 (provides `Flush()` + `supportsFlush`/`http.NewResponseController`; this patch supplies the missing `Unwrap` link).
+
+---
+
+## 0026 — gRPC UpdateDocument: invalidate read caches (BUG-10 FIX)
+
+- **Commit:** pending — authored, committed alongside this doc update (local commit only; user pushes)
+- **Type:** Cross-platform correctness (fixes a real defect; manifests on the gRPC read path behind the read cache)
+- **Upstreamable:** Yes (genuine fix — mirrors the REST update path in `document_ops.go`)
+- **Status:** Authored; CI verification pending (re-run after commit + push) — closes BUG-10 (regression guard 0023 already CI-FAILED proving the defect real)
+- **Files:**
+  - `services/mddbd/grpc_metadata.go` (modified — `import "mddb/internal/cache"` + cache invalidation in `UpdateDocument`)
+- **Purpose:** BUG-10 root cause (confirmed by CI run `31378799170` failing regression guard 0023 with `Get returned ContentMd="v1-content", want v2-content`): `UpdateDocument` writes the new content to BoltDB but never invalidates the read caches (`g.server.Cache` / `g.server.LockFreeCache`) that `Add` populated. The gRPC `Get` handler (grpc_server.go:244-265) reads cache-first, so it returns the stale cached `v1-content` until the 5-minute cache TTL expires. REST's `addDocument` already invalidates after every update (`document_ops.go:348-354`: `s.Cache.Delete(cacheKey)` + `s.LockFreeCache.Delete(cacheKey)`), but the gRPC `UpdateDocument` path omitted this. This patch adds the identical invalidation — `cacheKey := cache.BuildCacheKey(req.Collection, req.Key, req.Lang)` then `g.server.Cache.Delete(cacheKey)` + `g.server.LockFreeCache.Delete(cacheKey)` — unconditionally after a successful update (matching REST, since the cache stores the whole doc and any field change invalidates it). Now Get returns the freshly written content immediately. No other behaviour changes.
+- **Dependencies:** 0023 (regression guard that exposed the defect); pairs with the REST invalidation in `document_ops.go`.

@@ -3,7 +3,7 @@
 Ordered vendor patch series for the MDDB Windows port.
 
 **Upstream baseline:** `dbc9def` — "Add GitHub Actions workflow for MDDB Panel build"
-**Total patches:** 24
+**Total patches:** 25
 **Last updated:** 2026-08-10
 
 ---
@@ -345,3 +345,18 @@ Ordered vendor patch series for the MDDB Windows port.
   - `services/mddbd/sse.go` (modified — `supportsFlush` + `http.NewResponseController`)
 - **Purpose:** BUG-11: `GET /v1/events` returned HTTP 500 `streaming not supported`. Root cause: `Metrics.Middleware` wraps `w` in a `statusRecorder` that did **not** implement `http.Flusher`, so `handleSSE`'s `w.(http.Flusher)` assertion failed whenever metrics were enabled (the default on the Windows build). Fix: (a) give `statusRecorder` a `Flush()` that forwards to the embedded `ResponseWriter`; (b) in `handleSSE` use `http.NewResponseController(w)` and a `supportsFlush` helper that walks any wrapper via `Unwrap` to detect a real `Flusher`. SSE now streams `text/event-stream` even behind the metrics middleware. Every other middleware passes `w` through unchanged.
 - **Dependencies:** None (isolated to the SSE + metrics path).
+- **Note (complete fix):** CI on `93dece8` (0024 alone) FAILED `TestSSEHandleThroughNonFlusherWrapper` — the regression test wraps `w` in `nonFlusherWrap`, which (like the production `statusRecorder`) does **not** declare `http.Flusher`. `supportsFlush` walks the wrapper chain via `Unwrap`; with no `Unwrap` it returns false, so the test still received `HTTP 500 {"error":"streaming not supported"}`. The complete fix requires patch **0025**, which adds `Unwrap()` to both `statusRecorder` (production) and `nonFlusherWrap` (regression wrapper) so the real `Flusher` is reachable through the wrapper. See §0025.
+
+---
+
+## 0025 — SSE /v1/events: expose Unwrap() on statusRecorder + test wrapper (BUG-11 FIX, part 2)
+
+- **Commit:** pending — authored, committed alongside this doc update (local commit only; user pushes)
+- **Type:** Cross-platform correctness (completes the BUG-11 fix)
+- **Upstreamable:** Yes (genuine fix)
+- **Status:** Authored; CI verification pending (re-run after commit + push)
+- **Files:**
+  - `services/mddbd/internal/metrics/metrics.go` (modified — `statusRecorder.Unwrap()`)
+  - `services/mddbd/sse_test.go` (modified — `nonFlusherWrap.Unwrap()`)
+- **Purpose:** Completes BUG-11. Patch 0024 added `statusRecorder.Flush()` and switched `handleSSE` to `http.NewResponseController` + `supportsFlush` (which walks wrappers via `Unwrap`), but neither `statusRecorder` nor the regression-test wrapper `nonFlusherWrap` implemented `Unwrap()`, so `supportsFlush` could not find the underlying `Flusher` and SSE still returned 500 in the wrapped path. This patch adds `func (r *statusRecorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }` and the matching `func (n *nonFlusherWrap) Unwrap() http.ResponseWriter { return n.ResponseWriter }`, so flush-aware code reaches the real `Flusher` through any wrapper and SSE streams `text/event-stream` (200) behind the metrics middleware and in the regression test.
+- **Dependencies:** 0024 (provides `Flush()` + `supportsFlush`/`http.NewResponseController`; this patch supplies the missing `Unwrap` link).

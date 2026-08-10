@@ -3,7 +3,7 @@
 Searchable index of the vendor patch series.
 
 **Upstream baseline:** `dbc9def`
-**Total patches:** 24
+**Total patches:** 25
 **Last updated:** 2026-08-10
 
 ## By Patch Number
@@ -33,7 +33,8 @@ Searchable index of the vendor patch series.
 | 0021 | `1e66ea1` | Security: atomic Windows replace + gRPC restore rollback (SEC-OPEN-1/SEC-OPEN-2) | security / windows / restore | No |
 | 0022 | `c8460a7` | gRPC Restore: keep live DB closed until backup copy (0021 regression fix) | gRPC / storage / windows | No |
 | 0023 | `93dece8` | gRPC UpdateDocument: persist ContentMd (BUG-10 regression guard) | gRPC / tests | Yes |
-| 0024 | `93dece8` | SSE /v1/events: make statusRecorder flushable + http.NewResponseController (BUG-11 FIX) | http / metrics / sse | Yes |
+| 0024 | `93dece8` | SSE /v1/events: make statusRecorder flushable + http.NewResponseController (BUG-11 FIX, part 1) | http / metrics / sse | Yes |
+| 0025 | pending | SSE /v1/events: expose Unwrap() on statusRecorder + test wrapper (BUG-11 FIX, part 2) | http / metrics / sse | Yes |
 
 ## By Subsystem
 
@@ -79,7 +80,8 @@ Searchable index of the vendor patch series.
 - 0015 `4207661` — Vendor Leaflet markers locally, optional tiles
 
 ### HTTP / Metrics / SSE
-- 0024 `93dece8` — SSE /v1/events: statusRecorder.Flush() + http.NewResponseController (BUG-11 fix)
+- 0024 `93dece8` — SSE /v1/events: statusRecorder.Flush() + http.NewResponseController (BUG-11 fix, part 1)
+- 0025 `pending` — SSE /v1/events: Unwrap() on statusRecorder + test wrapper (BUG-11 fix, part 2)
 
 ## By Type
 
@@ -87,4 +89,4 @@ Searchable index of the vendor patch series.
 - 0001, 0002, 0003, 0004, 0009, 0010, 0014, 0019, 0020, 0021, 0022
 
 ### Cross-platform correctness (upstreamable)
-- 0005, 0006, 0007, 0008, 0011, 0012, 0013, 0015, 0016, 0017, 0018, 0023, 0024
+- 0005, 0006, 0007, 0008, 0011, 0012, 0013, 0015, 0016, 0017, 0018, 0023, 0024, 0025

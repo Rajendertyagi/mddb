@@ -1,0 +1,36 @@
+diff --git a/services/mddbd/internal/metrics/metrics.go b/services/mddbd/internal/metrics/metrics.go
+index 4763950..e8b5183 100644
+--- a/services/mddbd/internal/metrics/metrics.go
++++ b/services/mddbd/internal/metrics/metrics.go
+@@ -164,6 +164,12 @@ func (r *statusRecorder) Flush() {
+ 	}
+ }
+ 
++// Unwrap exposes the embedded writer so flush-aware middleware and
++// http.NewResponseController can reach the underlying http.Flusher through the
++// metrics statusRecorder. Makes the BUG-11 fix robust even when a caller walks
++// the writer chain via Unwrap rather than the http.Flusher assertion.
++func (r *statusRecorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }
++
+ // Middleware wraps an http.Handler, recording request count and latency.
+ func (m *Metrics) Middleware(next http.Handler) http.Handler {
+ 	if !m.enabled {
+diff --git a/services/mddbd/sse_test.go b/services/mddbd/sse_test.go
+index 6a613f6..7a99fc8 100644
+--- a/services/mddbd/sse_test.go
++++ b/services/mddbd/sse_test.go
+@@ -245,6 +245,14 @@ type nonFlusherWrap struct {
+ 	http.ResponseWriter
+ }
+ 
++// Unwrap exposes the embedded writer so flush-aware code (http.NewResponseController,
++// supportsFlush) can reach the underlying http.Flusher through this middleware wrapper.
++// This is the realistic production pattern: a wrapper that does not itself declare
++// http.Flusher but delegates via Unwrap — exactly what the BUG-11 fix must support.
++// Without Unwrap, the wrapper is genuinely non-flushable and 500 is correct; with it,
++// SSE streams (200) and the "connected" event is delivered.
++func (n *nonFlusherWrap) Unwrap() http.ResponseWriter { return n.ResponseWriter }
++
+ // TestSSEHandleThroughNonFlusherWrapper is the BUG-11 regression test: /v1/events
+ // must stream successfully even when the response writer is wrapped by a
+ // middleware that does not re-export http.Flusher. It asserts the connection

@@ -3,8 +3,8 @@
 Ordered vendor patch series for the MDDB Windows port.
 
 **Upstream baseline:** `dbc9def` — "Add GitHub Actions workflow for MDDB Panel build"
-**Total patches:** 22
-**Last updated:** 2026-08-09
+**Total patches:** 24
+**Last updated:** 2026-08-10
 
 ---
 
@@ -318,3 +318,30 @@ Ordered vendor patch series for the MDDB Windows port.
   - `services/mddbd/grpc_server.go` (modified)
 - **Purpose:** Patch 0021 added a safety snapshot + rollback to gRPC `Restore`, but it also reopened the live DB (a `bolt.Open` + `g.server.DB` reassignment) *between* taking the snapshot and copying the backup over the live path. On Windows you cannot rename/copy over a file that is still open, so `copy backup: rename ... test.db: Access is denied` and `TestGRPCRestore_Success` failed (CI run `31294191137`, the "Run server unit tests" step). This patch removes that premature reopen; the live DB now stays closed from the initial `Close()` until the backup copy succeeds, then reopens once — mirroring `Server.handleRestore` (0019) and the original close→copy→reopen contract. The snapshot+rollback safety behavior from 0021 is preserved.
 - **Dependencies:** 0021 (corrects a regression it introduced on the gRPC path); 0019 (`rollbackRestore` pattern).
+
+---
+
+## 0023 — gRPC UpdateDocument: persist ContentMd (BUG-10 regression guard)
+
+- **Commit:** `93dece8`
+- **Type:** Test (regression guard) — no production source change
+- **Upstreamable:** Yes (regression test)
+- **Status:** Authored (committed); CI verification pending
+- **Files:**
+  - `services/mddbd/grpc_update_document_content_test.go` (new)
+- **Purpose:** BUG-10 reported that gRPC `UpdateDocument` returned OK but did not persist `content_md`. Read-only investigation of the current source (`grpc_metadata.go:292` already sets `doc.ContentMD = req.ContentMd`; the handler is identical pre/post refactor) shows the defect is **not reproducible in the current tree** — REST and GraphQL paths were always correct and the gRPC path is correct today. This patch therefore ships a **regression guard** (`TestGRPCUpdateDocumentPersistsContentMd`): Add("v1") → UpdateDocument("v2", update_content=true) → Get must return "v2". It locks the correct behaviour so a future regression fails CI instead of shipping silently. No native source is modified.
+- **Dependencies:** None (standalone regression test).
+
+---
+
+## 0024 — SSE /v1/events: make statusRecorder flushable + use http.NewResponseController (BUG-11 FIX)
+
+- **Commit:** `93dece8`
+- **Type:** Cross-platform correctness (fixes a real defect; manifests on the Windows build under the metrics middleware)
+- **Upstreamable:** Yes (genuine fix)
+- **Status:** Authored (committed); CI verification pending
+- **Files:**
+  - `services/mddbd/internal/metrics/metrics.go` (modified — `statusRecorder.Flush()`)
+  - `services/mddbd/sse.go` (modified — `supportsFlush` + `http.NewResponseController`)
+- **Purpose:** BUG-11: `GET /v1/events` returned HTTP 500 `streaming not supported`. Root cause: `Metrics.Middleware` wraps `w` in a `statusRecorder` that did **not** implement `http.Flusher`, so `handleSSE`'s `w.(http.Flusher)` assertion failed whenever metrics were enabled (the default on the Windows build). Fix: (a) give `statusRecorder` a `Flush()` that forwards to the embedded `ResponseWriter`; (b) in `handleSSE` use `http.NewResponseController(w)` and a `supportsFlush` helper that walks any wrapper via `Unwrap` to detect a real `Flusher`. SSE now streams `text/event-stream` even behind the metrics middleware. Every other middleware passes `w` through unchanged.
+- **Dependencies:** None (isolated to the SSE + metrics path).

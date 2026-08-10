@@ -3,8 +3,8 @@
 Searchable index of the vendor patch series.
 
 **Upstream baseline:** `dbc9def`
-**Total patches:** 22
-**Last updated:** 2026-08-09
+**Total patches:** 24
+**Last updated:** 2026-08-10
 
 ## By Patch Number
 
@@ -32,6 +32,8 @@ Searchable index of the vendor patch series.
 | 0020 | `0ca19ea` | Embedding: deterministic offline provider (unblocks Vector on Windows CI) | embedding / vector / CI | No |
 | 0021 | `1e66ea1` | Security: atomic Windows replace + gRPC restore rollback (SEC-OPEN-1/SEC-OPEN-2) | security / windows / restore | No |
 | 0022 | `c8460a7` | gRPC Restore: keep live DB closed until backup copy (0021 regression fix) | gRPC / storage / windows | No |
+| 0023 | `93dece8` | gRPC UpdateDocument: persist ContentMd (BUG-10 regression guard) | gRPC / tests | Yes |
+| 0024 | `93dece8` | SSE /v1/events: make statusRecorder flushable + http.NewResponseController (BUG-11 FIX) | http / metrics / sse | Yes |
 
 ## By Subsystem
 
@@ -56,6 +58,7 @@ Searchable index of the vendor patch series.
 - 0009 `1dadef4` — gRPC: close+swap+reopen DB during Restore
 - 0010 `841cf1b` — gRPC-test: close live s.DB in cleanup
 - 0022 `c8460a7` — gRPC Restore: keep live DB closed until backup copy (0021 regression fix)
+- 0023 `93dece8` — gRPC UpdateDocument content-persistence regression test
 
 ### Tests
 - 0004 `cdb703c` — Runtime + tests compatibility (test-side fixes)
@@ -69,10 +72,14 @@ Searchable index of the vendor patch series.
 - 0016 `e55b6c2` — Temporal-test: poll for hot docs instead of fixed sleep
 - 0017 `63fbc50` — Audit-test: poll for time-window query instead of fixed flush wait
 - 0018 `1607fb0` — Indexqueue-test: poll for meta swap instead of fixed sleep
+- 0023 `93dece8` — gRPC-test: UpdateDocument persist ContentMd regression guard
 
 ### Packaging / Web
 - 0014 `7744da5` — Embed mddb-panel web UI into mddbd.exe
 - 0015 `4207661` — Vendor Leaflet markers locally, optional tiles
+
+### HTTP / Metrics / SSE
+- 0024 `93dece8` — SSE /v1/events: statusRecorder.Flush() + http.NewResponseController (BUG-11 fix)
 
 ## By Type
 
@@ -80,4 +87,4 @@ Searchable index of the vendor patch series.
 - 0001, 0002, 0003, 0004, 0009, 0010, 0014, 0019, 0020, 0021, 0022
 
 ### Cross-platform correctness (upstreamable)
-- 0005, 0006, 0007, 0008, 0011, 0012, 0013, 0015, 0016, 0017, 0018
+- 0005, 0006, 0007, 0008, 0011, 0012, 0013, 0015, 0016, 0017, 0018, 0023, 0024

@@ -2,7 +2,7 @@
 
 Current status of the MDDB Windows port.
 
-**Last updated:** 2026-08-09
+**Last updated:** 2026-08-10
 
 ---
 
@@ -18,8 +18,8 @@ Current status of the MDDB Windows port.
 
 | Item | Value |
 |------|-------|
-| Total vendor patches | 22 |
-| Patch range | `0001` – `0022` |
+| Total vendor patches | 24 |
+| Patch range | `0001` – `0024` |
 | Series complete (reproduces `main` from baseline) | Yes — verified `git diff` empty, `git diff-tree -r` exit 0 |
 
 ## Windows Build Status
@@ -47,7 +47,9 @@ Current status of the MDDB Windows port.
 
 - **SEC-OPEN-1 / SEC-OPEN-2 — VERIFIED FIXED (live evidence, run `31296463230`).** HTTP `handleRestore` snapshot+rollback added by 0019. `replacefile_windows.go` made atomic by 0021 (Go's `os.Rename` on Windows already uses `MoveFileEx(MOVEFILE_REPLACE_EXISTING)`, an atomic in-place replace — the prior `os.Remove`-then-`os.Rename` crash window is gone). **Attribution nuance:** the gRPC `Restore` path got the snapshot+rollback scaffolding in 0021, but 0021 *also* reopened the live DB between the snapshot and the backup copy — so on Windows `TestGRPCRestore_Success` still failed with "Access is denied". SEC-OPEN-2 for the **gRPC path was actually finalized by patch 0022** (removed the premature reopen; live DB stays closed until the backup copy succeeds, then reopens once — mirroring 0019). So: SEC-OPEN-1 = fixed in 0021 (unchanged since); SEC-OPEN-2 HTTP path = 0019, gRPC path = 0022. Evidence: `TestGRPCRestore_Success` PASSES in run `31296463230`; security audit `bugs = []`, `sec_score = 100` (3 graded features auth/enc/bak = 90 → scaled to 100).
 - **gRPC Restore reopen regression (0021) — FIXED & CONFIRMED by patch 0022 (run `31296463230`, all 15 jobs green, earned score 100/100).** 0021 also reopened the live DB (a `bolt.Open` + `g.server.DB` reassignment) *between* taking the snapshot and copying the backup over the live path. On Windows you cannot rename/copy over an open file, so `TestGRPCRestore_Success` failed with `copy backup: rename ... test.db: Access is denied` (CI run `31294191137`, "Run server unit tests" step). Patch 0022 removes that premature reopen; the live DB now stays closed from the initial `Close()` until the backup copy succeeds, then reopens once. The snapshot+rollback safety behavior from 0021 is preserved. `TestGRPCRestore_Success` now PASSES.
-- The **Vector** feature is now UNBLOCKED (patch 0020 + `MDDB_EMBEDDING_PROVIDER=offline` in the Vector audit job). The full embed→index→search pipeline runs on Windows CI via the deterministic offline provider. All Windows build/runtime/test/CI gaps are covered by patches 0001–0022.
+- The **Vector** feature is now UNBLOCKED (patch 0020 + `MDDB_EMBEDDING_PROVIDER=offline` in the Vector audit job). The full embed→index→search pipeline runs on Windows CI via the deterministic offline provider. All Windows build/runtime/test/CI gaps are covered by patches 0001–0024.
+- **BUG-10 / BUG-11 — FIXED via vendor patches 0023 / 0024 (committed `93dece8`; CI verification PENDING).** BUG-10 (gRPC `UpdateDocument` content persistence) was **not reproducible** in the current source (`grpc_metadata.go:292` already persists `ContentMd`) — patch 0023 ships a regression-guard test instead of a source change. BUG-11 (`/v1/events` SSE 500) is a real fix: `Metrics.Middleware`'s `statusRecorder` lacked `http.Flusher`; patch 0024 adds `statusRecorder.Flush()` and switches `handleSSE` to `http.NewResponseController` + `supportsFlush`. Both are authored as ordered vendor patches; CI (Windows build + `go test ./...`) is the source of truth and has not yet run on `93dece8`.
+- **BUG-12 — load-coupled RSS growth (P3, stability caveat).** The STEP 21 soak (903 s, ~114.8k ops) passed crash/hang/integrity/error-rate but flagged `LEAK_SUSPECTED` under sustained load (RSS 42 → 153 MB, ~420 MB/h); a controlled idle probe (step21b) showed a **PLATEAU** (RAM stable when idle). Not a crash or data-loss; watch under sustained high-throughput and profile the continuous-write path. See `BUGS.md` / report §9.
 
 ## Blockers
 

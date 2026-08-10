@@ -36,7 +36,7 @@ Searchable index of the vendor patch series.
 | 0024 | `93dece8` | SSE /v1/events: make statusRecorder flushable + http.NewResponseController (BUG-11 FIX, part 1) | http / metrics / sse | Yes |
 | 0025 | verified | SSE /v1/events: expose Unwrap() on statusRecorder + test wrapper (BUG-11 FIX, part 2) | http / metrics / sse | Yes |
 | 0026 | verified | gRPC UpdateDocument: invalidate read caches Cache + LockFreeCache (BUG-10 FIX) | gRPC / cache | Yes |
-| 0027 | pending | Audit workflow: setup-go cache-dependency-path (CI cache fix) | CI / workflow | No |
+| 0027 | `37e6734` | Audit workflow: setup-go cache-dependency-path (CI cache fix) | CI / workflow | No |
 
 ## By Subsystem
 
@@ -44,7 +44,7 @@ Searchable index of the vendor patch series.
 - 0001 `14c73ec` — Windows builds via cross-compilation
 - 0002 `1d96373` — Shim google/renameio for Windows cross-compile
 - 0004 `cdb703c` — Runtime + tests compatibility (test-side fixes; CI job is in the committed workflow)
-- 0027 `pending` — Audit workflow: setup-go cache-dependency-path (CI cache fix)
+- 0027 `37e6734` — Audit workflow: setup-go cache-dependency-path (CI cache fix)
 
 ### Platform API
 - 0003 `cf24aa3` — Handle return from GetCurrentProcess

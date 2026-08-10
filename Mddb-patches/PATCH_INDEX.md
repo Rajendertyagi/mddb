@@ -34,8 +34,8 @@ Searchable index of the vendor patch series.
 | 0022 | `c8460a7` | gRPC Restore: keep live DB closed until backup copy (0021 regression fix) | gRPC / storage / windows | No |
 | 0023 | `93dece8` | gRPC UpdateDocument: persist ContentMd (BUG-10 regression guard) | gRPC / tests | Yes |
 | 0024 | `93dece8` | SSE /v1/events: make statusRecorder flushable + http.NewResponseController (BUG-11 FIX, part 1) | http / metrics / sse | Yes |
-| 0025 | pending | SSE /v1/events: expose Unwrap() on statusRecorder + test wrapper (BUG-11 FIX, part 2) | http / metrics / sse | Yes |
-| 0026 | pending | gRPC UpdateDocument: invalidate read caches Cache + LockFreeCache (BUG-10 FIX) | gRPC / cache | Yes |
+| 0025 | verified | SSE /v1/events: expose Unwrap() on statusRecorder + test wrapper (BUG-11 FIX, part 2) | http / metrics / sse | Yes |
+| 0026 | verified | gRPC UpdateDocument: invalidate read caches Cache + LockFreeCache (BUG-10 FIX) | gRPC / cache | Yes |
 
 ## By Subsystem
 
@@ -61,7 +61,7 @@ Searchable index of the vendor patch series.
 - 0010 `841cf1b` — gRPC-test: close live s.DB in cleanup
 - 0022 `c8460a7` — gRPC Restore: keep live DB closed until backup copy (0021 regression fix)
 - 0023 `93dece8` — gRPC UpdateDocument content-persistence regression test
-- 0026 `pending` — gRPC UpdateDocument: invalidate read caches (BUG-10 FIX)
+- 0026 `verified` — gRPC UpdateDocument: invalidate read caches (BUG-10 FIX, CI PASS run 31382571122)
 
 ### Tests
 - 0004 `cdb703c` — Runtime + tests compatibility (test-side fixes)
@@ -83,7 +83,7 @@ Searchable index of the vendor patch series.
 
 ### HTTP / Metrics / SSE
 - 0024 `93dece8` — SSE /v1/events: statusRecorder.Flush() + http.NewResponseController (BUG-11 fix, part 1)
-- 0025 `pending` — SSE /v1/events: Unwrap() on statusRecorder + test wrapper (BUG-11 fix, part 2)
+- 0025 `verified` — SSE /v1/events: Unwrap() on statusRecorder + test wrapper (BUG-11 fix, part 2, CI PASS run 31378799170)
 
 ## By Type
 

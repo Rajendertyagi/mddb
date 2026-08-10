@@ -326,7 +326,7 @@ Ordered vendor patch series for the MDDB Windows port.
 - **Commit:** `93dece8`
 - **Type:** Test (regression guard) — no production source change
 - **Upstreamable:** Yes (regression test)
-- **Status:** Authored (committed); regression guard **FAILED in CI as intended** (run `31378799170`) → confirmed BUG-10 is **real**; production fix = patch **0026** (CI pending)
+- **Status:** Authored (committed); regression guard **FAILED in CI as intended** (run `31378799170`) → confirmed BUG-10 is **real**; production fix = patch **0026** (now CI verified PASS — run 31382571122)
 - **Files:**
   - `services/mddbd/grpc_update_document_content_test.go` (new)
 - **Purpose:** BUG-10 reported that gRPC `UpdateDocument` returned OK but did not persist `content_md`. An initial read-only assessment concluded it was **not reproducible** (`grpc_metadata.go:292` already sets `doc.ContentMD = req.ContentMd`), so this patch shipped a **regression guard** only. CI on `93dece8` then **overturned** that assessment: run `31378799170` FAILED `TestGRPCUpdateDocumentPersistsContentMd` with `Get returned ContentMd="v1-content", want v2-content`, proving the defect is real. Root cause: `UpdateDocument` writes BoltDB but never invalidates the read caches (`g.server.Cache` / `g.server.LockFreeCache`) that `Add` populated, so the cache-first gRPC `Get` (grpc_server.go:244-265) returns the stale `v1-content`. REST works because `document_ops.go:348-354` calls `s.Cache.Delete` + `s.LockFreeCache.Delete` after an update; the gRPC `UpdateDocument` path omitted this. The regression guard correctly exposed the real defect; the production fix ships as patch **0026** (cache invalidation in `grpc_metadata.go`, mirroring `document_ops.go`).
@@ -351,7 +351,7 @@ Ordered vendor patch series for the MDDB Windows port.
 
 ## 0025 — SSE /v1/events: expose Unwrap() on statusRecorder + test wrapper (BUG-11 FIX, part 2)
 
-- **Commit:** pending — authored, committed alongside this doc update (local commit only; user pushes)
+- **Commit:** `f61ff2b` (pushed; CI verified PASS run 31378799170)
 - **Type:** Cross-platform correctness (completes the BUG-11 fix)
 - **Upstreamable:** Yes (genuine fix)
 - **Status:** FIXED — CI verified PASS (run `31378799170`; BUG-11 SSE 500 resolved)
@@ -365,10 +365,10 @@ Ordered vendor patch series for the MDDB Windows port.
 
 ## 0026 — gRPC UpdateDocument: invalidate read caches (BUG-10 FIX)
 
-- **Commit:** pending — authored, committed alongside this doc update (local commit only; user pushes)
+- **Commit:** `d5e4edb` (pushed; CI verified PASS run 31382571122)
 - **Type:** Cross-platform correctness (fixes a real defect; manifests on the gRPC read path behind the read cache)
 - **Upstreamable:** Yes (genuine fix — mirrors the REST update path in `document_ops.go`)
-- **Status:** Authored; CI verification pending (re-run after commit + push) — closes BUG-10 (regression guard 0023 already CI-FAILED proving the defect real)
+- **Status:** FIXED — CI verified PASS (run 31382571122; `mddb` package `ok`, regression guard `TestGRPCUpdateDocumentPersistsContentMd` now PASS alongside `TestSSEHandleThroughNonFlusherWrapper`) — closes BUG-10 (regression guard 0023 CI-FAILED in 31378799170 proving the defect real)
 - **Files:**
   - `services/mddbd/grpc_metadata.go` (modified — `import "mddb/internal/cache"` + cache invalidation in `UpdateDocument`)
 - **Purpose:** BUG-10 root cause (confirmed by CI run `31378799170` failing regression guard 0023 with `Get returned ContentMd="v1-content", want v2-content`): `UpdateDocument` writes the new content to BoltDB but never invalidates the read caches (`g.server.Cache` / `g.server.LockFreeCache`) that `Add` populated. The gRPC `Get` handler (grpc_server.go:244-265) reads cache-first, so it returns the stale cached `v1-content` until the 5-minute cache TTL expires. REST's `addDocument` already invalidates after every update (`document_ops.go:348-354`: `s.Cache.Delete(cacheKey)` + `s.LockFreeCache.Delete(cacheKey)`), but the gRPC `UpdateDocument` path omitted this. This patch adds the identical invalidation — `cacheKey := cache.BuildCacheKey(req.Collection, req.Key, req.Lang)` then `g.server.Cache.Delete(cacheKey)` + `g.server.LockFreeCache.Delete(cacheKey)` — unconditionally after a successful update (matching REST, since the cache stores the whole doc and any field change invalidates it). Now Get returns the freshly written content immediately. No other behaviour changes.

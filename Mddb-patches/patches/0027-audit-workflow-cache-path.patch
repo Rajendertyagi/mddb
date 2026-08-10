@@ -1,0 +1,22 @@
+diff --git a/.github/workflows/Mddb-Windows-Audit.yml b/.github/workflows/Mddb-Windows-Audit.yml
+index 6691709..84e3724 100644
+--- a/.github/workflows/Mddb-Windows-Audit.yml
++++ b/.github/workflows/Mddb-Windows-Audit.yml
+@@ -297,6 +297,8 @@ jobs:
+         uses: actions/setup-go@v7
+         with:
+           go-version: ${{ env.GO_VERSION }}
++          cache: true
++          cache-dependency-path: services/mddbd/go.sum
+ 
+       - name: Grant execute permissions
+         run: |
+@@ -1102,6 +1104,8 @@ jobs:
+         uses: actions/setup-go@v7
+         with:
+           go-version: ${{ env.GO_VERSION }}
++          cache: true
++          cache-dependency-path: services/mddbd/go.sum
+ 
+       - name: Install grpcurl (go install)
+         run: |

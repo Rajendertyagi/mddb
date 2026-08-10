@@ -18,8 +18,8 @@ Current status of the MDDB Windows port.
 
 | Item | Value |
 |------|-------|
-| Total vendor patches | 26 |
-| Patch range | `0001` – `0026` |
+| Total vendor patches | 27 |
+| Patch range | `0001` – `0027` |
 | Series complete (reproduces `main` from baseline) | Yes — verified `git diff` empty, `git diff-tree -r` exit 0 |
 
 ## Windows Build Status
@@ -50,6 +50,7 @@ Current status of the MDDB Windows port.
 - The **Vector** feature is now UNBLOCKED (patch 0020 + `MDDB_EMBEDDING_PROVIDER=offline` in the Vector audit job). The full embed→index→search pipeline runs on Windows CI via the deterministic offline provider. All Windows build/runtime/test/CI gaps are covered by patches 0001–0026.
 - **BUG-10 / BUG-11 — BUG-11 FIXED (CI verified); BUG-10 FIXED via 0023 (regression guard) + 0026 (cache-invalidation, CI verified PASS run 31382571122).** BUG-11 (`/v1/events` SSE 500): patch 0024 added `statusRecorder.Flush()` and switched `handleSSE` to `http.NewResponseController` + `supportsFlush`; CI on `93dece8` (0024 alone) **FAILED** `TestSSEHandleThroughNonFlusherWrapper` (still 500) because neither `statusRecorder` nor the regression wrapper `nonFlusherWrap` implemented `Unwrap()`, so `supportsFlush` could not reach the underlying `Flusher`. Patch **0025** adds `Unwrap()` to both, completing the fix. CI run `31378799170` (commit `f61ff2b`, with 0024+0025) confirms `TestSSEHandleThroughNonFlusherWrapper` is **no longer failing → BUG-11 FIXED (CI verified PASS)**. BUG-10 (gRPC `UpdateDocument` content persistence): patch 0023 ships a regression guard `TestGRPCUpdateDocumentPersistsContentMd`. A read-only "not reproducible" assessment was **overturned by CI** — the same run `31378799170` FAILED the guard with `Get returned ContentMd="v1-content", want v2-content`, proving the defect is real. Root cause: `UpdateDocument` (grpc_metadata.go) writes BoltDB but never invalidates the read caches (`g.server.Cache` / `g.server.LockFreeCache`) that `Add` populated, so the cache-first gRPC `Get` (grpc_server.go:244-265) returns stale `v1-content`. REST works because `document_ops.go:348-354` calls `s.Cache.Delete` + `s.LockFreeCache.Delete`. **Patch 0026** adds the identical cache-invalidation to the gRPC `UpdateDocument` path (mirroring `document_ops.go`), closing BUG-10. CI on the 0023+0026 tree RUN green (run 31382571122 Build Windows `ok mddb`; audit run 31382570522 all 15 jobs green) — BUG-10 FIXED (CI verified PASS).
 - **BUG-12 — load-coupled RSS growth (P3, stability caveat).** The STEP 21 soak (903 s, ~114.8k ops) passed crash/hang/integrity/error-rate but flagged `LEAK_SUSPECTED` under sustained load (RSS 42 → 153 MB, ~420 MB/h); a controlled idle probe (step21b) showed a **PLATEAU** (RAM stable when idle). Not a crash or data-loss; watch under sustained high-throughput and profile the continuous-write path. See `BUGS.md` / report §9.
+- **CI audit-workflow module-cache warning — FIXED by patch 0027 (benign).** `actions/setup-go@v7` in `Mddb-Windows-Audit.yml` lacked `cache-dependency-path`, so its module-cache restore reported `Restore cache failed: Dependencies file is not found … Supported file pattern: go.mod` in the `Feature - gRPC API` and `Live Functional Tests (core)` jobs. The module is at `services/mddbd/go.mod` (with `go.sum` committed, no `vendor/`), so the cache was never restored — slower CI only, no correctness impact. Patch 0027 adds `cache: true` + `cache-dependency-path: services/mddbd/go.sum` to both `setup-go` steps, matching the already-correct steps in the same workflow and `build-windows.yml`. No production behavior change.
 
 ## Blockers
 

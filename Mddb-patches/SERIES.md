@@ -3,7 +3,7 @@
 Ordered vendor patch series for the MDDB Windows port.
 
 **Upstream baseline:** `dbc9def` — "Add GitHub Actions workflow for MDDB Panel build"
-**Total patches:** 26
+**Total patches:** 27
 **Last updated:** 2026-08-10
 
 ---
@@ -373,3 +373,16 @@ Ordered vendor patch series for the MDDB Windows port.
   - `services/mddbd/grpc_metadata.go` (modified — `import "mddb/internal/cache"` + cache invalidation in `UpdateDocument`)
 - **Purpose:** BUG-10 root cause (confirmed by CI run `31378799170` failing regression guard 0023 with `Get returned ContentMd="v1-content", want v2-content`): `UpdateDocument` writes the new content to BoltDB but never invalidates the read caches (`g.server.Cache` / `g.server.LockFreeCache`) that `Add` populated. The gRPC `Get` handler (grpc_server.go:244-265) reads cache-first, so it returns the stale cached `v1-content` until the 5-minute cache TTL expires. REST's `addDocument` already invalidates after every update (`document_ops.go:348-354`: `s.Cache.Delete(cacheKey)` + `s.LockFreeCache.Delete(cacheKey)`), but the gRPC `UpdateDocument` path omitted this. This patch adds the identical invalidation — `cacheKey := cache.BuildCacheKey(req.Collection, req.Key, req.Lang)` then `g.server.Cache.Delete(cacheKey)` + `g.server.LockFreeCache.Delete(cacheKey)` — unconditionally after a successful update (matching REST, since the cache stores the whole doc and any field change invalidates it). Now Get returns the freshly written content immediately. No other behaviour changes.
 - **Dependencies:** 0023 (regression guard that exposed the defect); pairs with the REST invalidation in `document_ops.go`.
+
+---
+
+## 0027 — Audit workflow: setup-go cache-dependency-path (CI cache fix)
+
+- **Commit:** pending (generated 2026-08-10; not yet pushed)
+- **Type:** Windows-only (CI build-infra accommodation)
+- **Upstreamable:** No (GitHub Actions workflow accommodation for the port's module layout)
+- **Status:** Authored — applies clean in CI order (0001–0026 then 0027); awaiting commit + push
+- **Files:**
+  - `.github/workflows/Mddb-Windows-Audit.yml` (modified — two `actions/setup-go@v7` steps)
+- **Purpose:** Two `setup-go` steps in `Mddb-Windows-Audit.yml` (the `Feature - gRPC API` job and the `Live Functional Tests (core)` job) lacked `cache-dependency-path`, so `actions/setup-go@v7` searched for `go.mod` at the checkout root and reported `Restore cache failed: Dependencies file is not found in … Supported file pattern: go.mod`. This repo's Go module lives at `services/mddbd/go.mod` (with `go.sum` committed, no `vendor/`), so the module cache was never restored — benign (slower CI only, no correctness impact). This patch adds `cache: true` + `cache-dependency-path: services/mddbd/go.sum` to both `setup-go` steps, matching the already-correct steps at lines 71/195 of the same workflow and `build-windows.yml` (lines 37/133). `build-windows.yml` needed no change.
+- **Dependencies:** None (standalone CI workflow fix; depends only on the repo's existing module layout).
